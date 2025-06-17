@@ -12,18 +12,13 @@ XXX is
 Start by creating a conda environment:
 
 ```bash
-conda create -n xxx python=3.10
+conda create -n xxx python=3.12
 ```
 
 Activate the virtual environment:
 
 ```bash
 conda activate xxx
-```
-
-访问 pytorch 官网安装对应 cuda version 的版本，例如这里示范了对应 cuda 12.8 的版本的安装
-
-```bash
 ```
 
 Install major dependencies
@@ -36,4 +31,16 @@ pip install -r requirements.txt
 
 ```bash
 pip install git+https://github.com/huggingface/diffusers
+```
+
+访问 pytorch 官网安装对应 cuda version 的版本，例如这里示范了对应 cuda 12.8 的版本的安装，此处以 cuda-12.8 为例
+
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+```
+
+[Optional] 安装 xformers for accelerate (same for CUDA-12.8)
+
+```bash
+pip install xformers --index-url https://download.pytorch.org/whl/cu128
 ```

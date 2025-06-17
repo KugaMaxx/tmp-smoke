@@ -1,9 +1,8 @@
 accelerate
-# datasets
+datasets
 # ftfy
 # Jinja2
 # peft==0.7.0
-# torchvision
 transformers
 # tensorboard
 faiss-cpu
