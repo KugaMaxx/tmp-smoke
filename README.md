@@ -44,3 +44,21 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 ```bash
 pip install xformers --index-url https://download.pytorch.org/whl/cu128
 ```
+
+## Run a Demo
+
+## Train your own Model
+
+### Prepare dataset
+
+To train a image-to-image diffusion, 数据集需要构成如下：
+
+```bash
+
+```
+
+If you only have fds data, you can check [fds to texture.md]() for more details.
+
+TODO: 准备一个小型的 cube 数据集，大小控制在 500M 左右
+
+### 

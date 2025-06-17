@@ -21,37 +21,30 @@ from PIL import Image
 from pathlib import Path
 from tqdm.auto import tqdm
 
-import transformers
-
+# pytorch
 import torch
 import torch.nn.functional as F
-import torch.utils.checkpoint
 from torchvision import transforms
 
+# datasets
 import datasets
 from datasets import load_dataset
 
+# accelerate
 import accelerate
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.state import AcceleratorState
 from accelerate.utils import ProjectConfiguration, set_seed
 
+# diffusers
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel, StableDiffusionImg2ImgPipeline
+from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel, StableDiffusionImg2ImgPipeline
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import compute_dream_and_update_latents, compute_snr
-from diffusers.utils import check_min_version, deprecate, make_image_grid
-from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available, is_wandb_available, is_bitsandbytes_available
-from diffusers.utils.torch_utils import is_compiled_module
-
-# huggingface_hub
-from huggingface_hub import create_repo, upload_folder
 
 # transforms
+import transformers
 from transformers import CLIPTextModel, CLIPTokenizer
-from transformers.utils import ContextManagers
 
 
 logger = get_logger(__name__, log_level="INFO")
