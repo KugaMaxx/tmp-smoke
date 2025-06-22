@@ -38,34 +38,34 @@ if __name__ == '__main__':
     ]
     embeds, database = [], []
 
-    for case_id, case in enumerate(cases):
-        if 'Cube04_S01' not in case.name: continue
-        print(case.name)
+    # for case_id, case in enumerate(cases):
+    #     if 'Cube04_S01' not in case.name: continue
+    #     print(case.name)
 
-        devc_list = pd.read_csv(f"{case / (case.stem + '_devc.csv')}", skiprows=1)
-        # devc_list = devc_list.filter(like='HD')
+    #     devc_list = pd.read_csv(f"{case / (case.stem + '_devc.csv')}", skiprows=1)
+    #     # devc_list = devc_list.filter(like='HD')
         
-        for devc_id, devc_data in devc_list.iterrows():
-            caption = ','.join([f"{data:.2f}" for data in devc_data.values])
-            input = tokenizer(
-                caption, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
-            ).input_ids.to("cuda")
-            embed = text_encoder(input, return_dict=False)[0]
+    #     for devc_id, devc_data in devc_list.iterrows():
+    #         caption = ','.join([f"{data:.2f}" for data in devc_data.values])
+    #         input = tokenizer(
+    #             caption, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+    #         ).input_ids.to("cuda")
+    #         embed = text_encoder(input, return_dict=False)[0]
 
-            embeds.append(embed.flatten().cpu().numpy())
-            database.append(
-                {
-                    'name': case.stem,
-                    'idx': devc_id,
-                    'devc': devc_data,
-                    'image_path': Path('/home/dszh/workspace/data/csmv-cube-v4-rag-residual/image') / f"{case.stem}_{devc_id:03d}.png"
-                }
-            )
+    #         embeds.append(embed.flatten().cpu().numpy())
+    #         database.append(
+    #             {
+    #                 'name': case.stem,
+    #                 'idx': devc_id,
+    #                 'devc': devc_data,
+    #                 'image_path': Path('/home/dszh/workspace/data/csmv-cube-v4-rag-residual/image') / f"{case.stem}_{devc_id:03d}.png"
+    #             }
+    #         )
 
-    # make faiss index
-    data = np.array(embeds)
-    index = faiss.IndexFlatL2(data.shape[1])
-    index.add(data)
+    # # make faiss index
+    # data = np.array(embeds)
+    # index = faiss.IndexFlatL2(data.shape[1])
+    # index.add(data)
 
     # initialize model
     pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
@@ -78,9 +78,31 @@ if __name__ == '__main__':
     pipeline.vae.to(memory_format=torch.channels_last)
 
 
-    args.validation_dir = Path(args.validation_dir)
-    devc_list = pd.read_csv(f"{args.validation_dir / (args.validation_dir.stem + '_devc.csv')}", skiprows=1)
+    # args.validation_dir = Path(args.validation_dir)
+    # devc_list = pd.read_csv(f"{args.validation_dir / (args.validation_dir.stem + '_devc.csv')}", skiprows=1)
+    # # devc_list = devc_list.filter(like='HD')
+    
+    # ====
+    devc_list = pd.read_csv(f"/home/dszh/workspace/data/Cube-v4/Cube04_S01_H0600/Cube04_S01_H0600_devc.csv", skiprows=1)
     # devc_list = devc_list.filter(like='HD')
+    
+    for devc_id, devc_data in devc_list.iterrows():
+        caption = ','.join([f"{data:.2f}" for data in devc_data.values])
+        input = tokenizer(
+            caption, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+        ).input_ids.to("cuda")
+        embed = text_encoder(input, return_dict=False)[0]
+
+        embeds.append(embed.flatten().cpu().numpy())
+        database.append(
+            {
+                'name': 'Cube04_S01_H0600',
+                'idx': devc_id,
+                'devc': devc_data,
+                'image_path': Path('/home/dszh/workspace/data/csmv-cube-v4-rag-residual/image') / f"Cube04_S01_H0600_{devc_id:03d}.png"
+            }
+        )
+    # ====
 
     frames = []
     for devc_id, devc_data in devc_list.iterrows():
@@ -93,9 +115,11 @@ if __name__ == '__main__':
         search_embed = text_encoder(input, return_dict=False)[0]
         search_embed = search_embed.flatten().unsqueeze(0).cpu().numpy()
 
-        D, I = index.search(search_embed, 1)
+        # D, I = index.search(search_embed, 1)
 
-        retrieved_data = [database[i] for i in I[0]]
+        # retrieved_data = [database[i] for i in I[0]]
+
+        retrieved_data = [database[devc_id]]
 
         print(caption)
         print(retrieved_data)
