@@ -15,7 +15,7 @@ from tqdm.auto import tqdm
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Expand FDS data with varying heat release rates.')
-    parser.add_argument('--fds_data_dir', default='/home/dszh/workspace/tmp-smoke/Python/data/cube-fds/.fds', type=str)
+    parser.add_argument('--fds_case_dir', default='/home/dszh/workspace/tmp-smoke/Python/data/cube-fds/.fds', type=str)
     parser.add_argument('--output_dir', default='/home/dszh/workspace/tmp-smoke/Python/data/cube-fds', type=str)
     parser.add_argument('--start_hrr', default=100, type=int)
     parser.add_argument('--end_hrr', default=2100, type=int)
@@ -27,15 +27,15 @@ if __name__ == '__main__':
     if args.seed is not None:
         random.seed(args.seed)
 
-    # fds directory
-    args.fds_data_dir = Path(args.fds_data_dir)
+    # predefined fds case directory
+    args.fds_case_dir = Path(args.fds_case_dir)
     
     # create output directory
     args.output_dir = Path(args.output_dir)
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_baseline_dir = args.output_dir / 'baseline'
-    output_baseline_dir.mkdir(parents=True, exist_ok=True)
+    output_database_dir = args.output_dir / 'database'
+    output_database_dir.mkdir(parents=True, exist_ok=True)
 
     output_train_dir = args.output_dir / 'train'
     output_train_dir.mkdir(parents=True, exist_ok=True)
@@ -48,11 +48,15 @@ if __name__ == '__main__':
         # read existing fds file
         with open(fds_file, 'r', encoding='utf-8') as f:
             fds_info = f.read()
-            fds_info = re.sub(r'HRRPUA=\d+\.?\d*', f'HRRPUA={hrr:.1f}', fds_info)
 
         # create new subfolder
-        output_dir = output_dir / (output_name + f'_h{hrr:04d}')
+        output_name = output_name + f'_h{hrr:04d}'
+        output_dir = output_dir / output_name
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # modify
+        fds_info = re.sub(r"HRRPUA=\d+\.?\d*", f"HRRPUA={hrr:.1f}", fds_info)
+        fds_info = re.sub(r"CHID='([^']*)'", f"CHID='{output_name}'", fds_info)
 
         # rewrite
         output_fds_file = output_dir / (output_dir.name + '.fds')
@@ -63,7 +67,7 @@ if __name__ == '__main__':
     
     # look through all fds files
     captions = {'train': [], 'validation': []}
-    for fds_case in tqdm(sorted(args.fds_data_dir.glob('*'))):
+    for fds_case in tqdm(sorted(args.fds_case_dir.glob('*'))):
         fds_file = fds_case / (fds_case.stem + '.fds')
         fds_file_name = fds_case.name
         
@@ -71,7 +75,7 @@ if __name__ == '__main__':
         for hrr in range(args.start_hrr, args.end_hrr, args.step_hrr):
 
             # save basline
-            baseline_fds_file = modify_hrr_and_save(fds_file, hrr, output_dir=output_baseline_dir, output_name=fds_file_name)
+            database_fds_file = modify_hrr_and_save(fds_file, hrr, output_dir=output_database_dir, output_name=fds_file_name)
 
             half_step_hrr = args.step_hrr / 2.0
             hrr = hrr + random.randint(-int(half_step_hrr), int(half_step_hrr))
@@ -81,7 +85,7 @@ if __name__ == '__main__':
 
             captions['train'].append(
                 {
-                    "source": f"{output_baseline_dir.stem}/{baseline_fds_file.stem}",
+                    "source": f"{output_database_dir.stem}/{database_fds_file.stem}",
                     "target": f"{output_train_dir.stem}/{train_fds_file.stem}",
                 }
             )
@@ -93,13 +97,10 @@ if __name__ == '__main__':
         validation_fds_file = modify_hrr_and_save(fds_file, hrr, output_dir=output_validation_dir, output_name=fds_file_name)
         captions['validation'].append(
             {
-                "source": f"{output_validation_dir.stem}/{validation_fds_file.stem}",
-                "target": None,
+                "source": None,
+                "target": f"{output_validation_dir.stem}/{validation_fds_file.stem}",
             }
         )
         
     with open(f"{args.output_dir / 'index.jsonl'}", 'w', encoding='utf-8') as f:
-        for split in captions:
-            for caption in captions[split]:
-                json.dump(caption, f, ensure_ascii=False)
-                f.write("\n")
+        json_str = json.dump(captions, f, ensure_ascii=False, indent=2)

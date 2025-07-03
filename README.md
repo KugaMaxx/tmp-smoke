@@ -27,6 +27,12 @@ Install major dependencies
 pip install -r requirements.txt
 ```
 
+安装 openvdb （会出现一些安装报的版本不同）
+
+```bash
+conda install -c conda-forge openvdb --no-update-deps
+```
+
 安装 diffusers from source
 
 ```bash
@@ -57,7 +63,7 @@ To train a image-to-image diffusion, 数据集需要构成如下：
 
 ```
 
-If you only have fds data, you can check [fds to texture.md]() for more details.
+If you what to start from fds simulation, you can check [fds to texture.md]() for more details.
 
 TODO: 准备一个小型的 cube 数据集，大小控制在 500M 左右
 
