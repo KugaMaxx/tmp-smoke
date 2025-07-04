@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! /usr/bin/env python3
 # This script helps 生成项目需要的 fds 文件结构从给定的建筑布局中。首先，不同的建筑基础
 # 布局需要放在同一文件夹中，随后该代码会在指定的 output_dir 下生成三个子文件夹：
 # 以 --xxx 间隔生成的参考 fds 数据，用于
@@ -15,8 +15,8 @@ from tqdm.auto import tqdm
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Expand FDS data with varying heat release rates.')
-    parser.add_argument('--fds_case_dir', default='/home/dszh/workspace/tmp-smoke/Python/data/cube-fds/.fds', type=str)
-    parser.add_argument('--output_dir', default='/home/dszh/workspace/tmp-smoke/Python/data/cube-fds', type=str)
+    parser.add_argument('--fds_case_dir', default=str((Path(__file__).parent / '../../data/cube-fds/.fds').resolve()), type=str)
+    parser.add_argument('--output_dir', default=str((Path(__file__).parent / '../../data/cube-fds').resolve()), type=str)
     parser.add_argument('--start_hrr', default=100, type=int)
     parser.add_argument('--end_hrr', default=2100, type=int)
     parser.add_argument('--step_hrr', default=100, type=int)

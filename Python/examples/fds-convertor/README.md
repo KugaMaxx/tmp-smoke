@@ -1,15 +1,15 @@
 # FDS Convertor
 
 This is an example to teach you how to convert `.fds` data to the project-required
- dataset.
+dataset.
 
 ## TODO
 
 ### Prepare FDS files
 
-首先，需要准备几个 different fire location的场景，which we called them the
- basic cases. Take a simple cube as an example, your `.fds` file may include the
- following lines:
+首先，需要准备几个 different fire location 的场景，which we called them the
+basic cases. Take a simple cube as an example, your `.fds` file may include the
+following lines:
 
 ```
 &HEAD CHID='cube'/
@@ -38,21 +38,22 @@ This is an example to teach you how to convert `.fds` data to the project-requir
       HRRPUA=3000.0,
       TMP_FRONT=300.0/
 
-&OBST ID='Burner', XB=5.2,7.6,0.0,2.4,0.0,0.2, SURF_IDS='Burner','INERT','INERT'/ 
+&OBST ID='Burner', XB=5.2,7.6,0.0,2.4,0.0,0.2, SURF_IDS='Burner','INERT','INERT'/
 
-&VENT ID='Vent', SURF_ID='OPEN', XB=4.4,8.4,4.4,8.4,12.8,12.8/ 
+&VENT ID='Vent', SURF_ID='OPEN', XB=4.4,8.4,4.4,8.4,12.8,12.8/
 
 &TAIL /
 ```
 
 每个字段的含义，请查阅 FDS 官方技术手册。请特别留意如下几个字段：
 
-- `&DUMP` 是xxx，请注意我们需要保持 PLOT3D_QUANTITY(1)='OPTICAL DENSITY'
-- `&MESH` 是xxx，请注意我们需要保持 IJK=63,63,63，同时暂时不支持多个 meshes
+- `&DUMP` 是 xxx，请注意我们需要保持 PLOT3D_QUANTITY(1)='OPTICAL DENSITY'
+- `&MESH` 是 xxx，请注意我们需要保持 IJK=63,63,63，**注意暂时不支持多个 meshes**
 
 将上述 basic cases 按如下结构保存：
 
 ```
+
 ```
 
 ### Expand with varying HRR
@@ -60,9 +61,11 @@ This is an example to teach you how to convert `.fds` data to the project-requir
 运行 `expand_fds.py` 以扩展 basic cases 为多个 heat release rate 的数据
 
 ```python
+
 ```
 
 这将包含：
+
 - `database/` 以 predefined `--hrr_step` 在区间内创建等间隔的数据库
 - `train/`
 - `validation/`
@@ -73,11 +76,12 @@ This is an example to teach you how to convert `.fds` data to the project-requir
 fds xxx
 ```
 
-由于FDS需要计算数值解，这个过程往往持续很久，取决于你电脑的CPU性能
+由于 FDS 需要计算数值解，这个过程往往持续很久，取决于你电脑的 CPU 性能
 
 因此，你的 fds 文件夹最后构成如下：
 
 ```
+
 ```
 
 ### Finally convert to dataset
@@ -91,4 +95,5 @@ python3 fds_to_texture.py
 最后输出的文件夹构成如下：
 
 ```
+
 ```

@@ -1,6 +1,9 @@
 # Datasets
 data/
 
+# Outputs
+*output*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
