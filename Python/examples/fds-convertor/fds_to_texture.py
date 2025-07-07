@@ -141,7 +141,7 @@ if __name__ == '__main__':
             database_image.save(database_image_dir / database_image_name)
 
             # save train image
-            train_image_dir = texture_data_train_dir / database_case.stem
+            train_image_dir = texture_data_train_dir / train_case.stem
             train_image_dir.mkdir(parents=True, exist_ok=True)
             train_image_name = f"{train_case.stem}_{file_id:03d}.png"
             train_image = Image.fromarray(train_plot3d_img)
@@ -155,8 +155,8 @@ if __name__ == '__main__':
             
             captions.append(
                 {
-                    "conditioning_image": f"'database'/ {database_image_dir.stem} / {database_image_name}",
-                    "image": f"'train' / {train_image_dir.stem} / {train_image_name}",
+                    "conditioning_image": f"database/{database_image_dir.stem}/{database_image_name}",
+                    "image": f"train/{train_image_dir.stem}/{train_image_name}",
                     "text": ','.join([f"{float(devc) + 1e-2:.2f}" for devc in residual_devc]),
                 }
             )

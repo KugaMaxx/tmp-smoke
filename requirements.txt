@@ -1,5 +1,6 @@
 accelerate
 datasets
+diffusers
 # ftfy
 # Jinja2
 # peft==0.7.0

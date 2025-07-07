@@ -91,7 +91,7 @@ def parse_args():
         default=None,
         help="The config of the Dataset, leave as None if there's only one config.",
     )
-    parser.add_argument(
+    parser.add_argument( # TODO 改为None并且required=True
         "--train_data_dir",
         type=str,
         default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "data/csmv-cube-v4-rag-residual"),
@@ -549,7 +549,7 @@ def prepare_dataset(args, tokenizer, accelerator):
 
 
 def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, step, is_final_validation=False):
-    if args.validation_prompts is not None:
+    if args.validation_prompts is None:
         return None
     
     logger.info("Running validation... ")
@@ -670,7 +670,7 @@ if __name__ == "__main__":
         weight_dtype = torch.bfloat16
     
     # Move text_encode and vae to gpu and cast to weight_dtype
-    vae.to(accelerator.device, dtype=torch.float32)
+    vae.to(accelerator.device, dtype=weight_dtype)
     text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # Get the target for loss depending on the prediction type
@@ -743,7 +743,10 @@ if __name__ == "__main__":
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers(args.tracker_project_name, config=vars(args))
+        tracker_config = dict(vars(args))
+        tracker_config.pop("validation_prompts")
+        tracker_config.pop("validation_images")
+        accelerator.init_trackers(args.tracker_project_name, tracker_config)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
