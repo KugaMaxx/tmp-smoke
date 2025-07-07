@@ -136,15 +136,6 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "An optional input evaluation data file (a jsonlines file)."},
     )
-    max_seq_length: Optional[int] = field(
-        default=128,
-        metadata={
-            "help": (
-                "The maximum total input sequence length after tokenization. Sequences longer "
-                "than this will be truncated, sequences shorter will be padded."
-            )
-        },
-    )
     max_train_samples: Optional[int] = field(
         default=None,
         metadata={
@@ -363,7 +354,7 @@ def main():
     # We need to tokenize input captions and transform the images.
     def tokenize_captions(examples):
         captions = list(examples[caption_column])
-        text_inputs = tokenizer(captions, max_length=data_args.max_seq_length, padding="max_length", truncation=True)
+        text_inputs = tokenizer(captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True)
         examples["input_ids"] = text_inputs.input_ids
         examples["attention_mask"] = text_inputs.attention_mask
         return examples
@@ -474,7 +465,7 @@ def main():
     inputs = image_processor(
         text=texts, images=images, return_tensors="pt", padding=True
     )
-    text_inputs = tokenizer(texts, padding="max_length", max_length=data_args.max_seq_length, truncation=True, return_tensors="pt")
+    text_inputs = tokenizer(texts, padding="max_length", max_length=tokenizer.model_max_length, truncation=True, return_tensors="pt")
     text_inputs = {k: v.to(model.device) for k, v in text_inputs.items()}
 
     inputs['pixel_values'] = inputs['pixel_values'].cuda()
