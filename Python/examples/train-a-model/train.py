@@ -38,7 +38,7 @@ from accelerate.utils import ProjectConfiguration, set_seed
 
 # diffusers
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel, StableDiffusionImg2ImgPipeline
+from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel, StableDiffusionPipeline
 from diffusers.optimization import get_scheduler
 from diffusers.utils.import_utils import is_xformers_available, is_wandb_available, is_bitsandbytes_available
 
@@ -94,7 +94,7 @@ def parse_args():
     parser.add_argument( # TODO 改为None并且required=True
         "--train_data_dir",
         type=str,
-        default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "data/csmv-cube-v4-rag-residual"),
+        default="/home/dszh/workspace/tmp-smoke/Python/data/cube-texture",
         help=(
             "A folder containing the training data. Folder contents must follow the structure described in"
             " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
@@ -136,9 +136,9 @@ def parse_args():
         "--validation_images",
         type=str,
         default=[
-            "/root/autodl-tmp/csmv-cube-v4-rag-residual/conditioning_image/Cube04_S01_H0200_060.png",
-            "/root/autodl-tmp/csmv-cube-v4-rag-residual/conditioning_image/Cube04_S02_H1000_100.png",
-            "/root/autodl-tmp/csmv-cube-v4-rag-residual/conditioning_image/Cube04_S03_H1900_080.png"
+            "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture/database/cube_s01_h0300/cube_s01_h0300_060.png",
+            "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture/database/cube_s02_h1000/cube_s02_h1000_100.png",
+            "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture/database/cube_s03_h2000/cube_s03_h2000_080.png"
         ],
         nargs="*",
         help=("A set of prompts evaluated every `--validation_steps` and logged to `--report_to`."),
@@ -558,7 +558,7 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
     else:
         unet = UNet2DConditionModel.from_pretrained(args.output_dir, subfolder="unet", torch_dtype=weight_dtype)
 
-    pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
+    pipeline = StableDiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         vae=vae,
         text_encoder=text_encoder,
@@ -903,7 +903,7 @@ if __name__ == "__main__":
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
 
-        pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
+        pipeline = StableDiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             vae=vae,
             text_encoder=text_encoder,
