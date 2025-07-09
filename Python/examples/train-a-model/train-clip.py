@@ -1,26 +1,8 @@
 #!/usr/bin/env python
-# Copyright 2022 The HuggingFace Team All rights reserved.
+# Finetuning a CLIP used in diffusers, the code is originated from:
+# 
+#   https://github.com/huggingface/diffusers/blob/main/examples/community/README.md
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-"""
-Training a CLIP like dual encoder models using text and vision encoders in the library.
-
-The script can be used to train CLIP like models for languages other than English by using
-a text encoder pre-trained in the desired language. Currently this script supports the following vision
-and text models:
-Vision models: ViT(https://huggingface.co/models?filter=vit), CLIP (https://huggingface.co/models?filter=clip)
-Text models: BERT, ROBERTa (https://huggingface.co/models?filter=fill-mask)
-"""
 
 import logging
 import os
@@ -31,15 +13,15 @@ from typing import Optional
 import torch
 from datasets import load_dataset
 from PIL import Image
-from torchvision.io import ImageReadMode, read_image
+from torchvision import transforms
 from torchvision.transforms import CenterCrop, ConvertImageDtype, Normalize, Resize
 from torchvision.transforms.functional import InterpolationMode
 
+from diffusers.image_processor import VaeImageProcessor
+
 import transformers
 from transformers import (
-    CLIPImageProcessor,
     CLIPModel,
-    CLIPTextModel,
     CLIPTokenizer,
     HfArgumentParser,
     Trainer,
@@ -47,7 +29,6 @@ from transformers import (
     set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
 logger = logging.getLogger(__name__)
@@ -60,7 +41,7 @@ class ModelArguments:
     """
 
     model_name_or_path: str = field(
-        default="/home/dszh/workspace/tmp-smoke/Python/examples/train-a-model/clip-roberta",
+        default="/home/dszh/workspace/tmp-smoke/Python/examples/train-a-model/clip-finetune",
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"},
     )
     config_name: Optional[str] = field(
@@ -69,7 +50,6 @@ class ModelArguments:
     tokenizer_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
     )
-    image_processor_name: str = field(default=None, metadata={"help": "Name or path of preprocessor config."})
     cache_dir: Optional[str] = field(
         default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
     )
@@ -101,7 +81,7 @@ class ModelArguments:
         },
     )
     freeze_vision_model: bool = field(
-        default=False, metadata={"help": "Whether to freeze the vision model parameters or not."}
+        default=True, metadata={"help": "Whether to freeze the vision model parameters or not."}
     )
     freeze_text_model: bool = field(
         default=False, metadata={"help": "Whether to freeze the text model parameters or not."}
@@ -216,10 +196,6 @@ def main():
     if training_args.num_train_epochs == 3.0:  # Default HuggingFace value
         training_args.num_train_epochs = 10  # Set your preferred default
 
-    # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
-    # information sent is the one passed as arguments along with your Python/PyTorch versions.
-    send_example_telemetry("run_clip", model_args, data_args)
-
     # 2. Setup logging
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -282,15 +258,6 @@ def main():
         "stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="tokenizer"
     )
 
-    # Load image_processor, in this script we only use this to get the mean and std for normalization.
-    image_processor = CLIPImageProcessor.from_pretrained(
-        "openai/clip-vit-large-patch14",
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        token=model_args.token,
-        trust_remote_code=model_args.trust_remote_code,
-    )
-
     model = CLIPModel.from_pretrained(
         "openai/clip-vit-large-patch14",
         cache_dir=model_args.cache_dir,
@@ -345,10 +312,13 @@ def main():
 
     # 7. Preprocessing the datasets.
     # Initialize torchvision transforms and jit it for faster processing.
-    image_transformations = Transform(
-        config.vision_config.image_size, image_processor.image_mean, image_processor.image_std
+    train_transforms = transforms.Compose(
+        [
+            transforms.Resize(config.vision_config.image_size, interpolation=transforms.InterpolationMode.LANCZOS),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5]),
+        ]
     )
-    image_transformations = torch.jit.script(image_transformations)
 
     # Preprocessing the datasets.
     # We need to tokenize input captions and transform the images.
@@ -360,8 +330,8 @@ def main():
         return examples
 
     def transform_images(examples):
-        images = [read_image(image_file, mode=ImageReadMode.RGB) for image_file in examples[image_column]]
-        examples["pixel_values"] = [image_transformations(image) for image in images]
+        images = [Image.open(image_file).convert("RGB") for image_file in examples[image_column]]
+        examples["pixel_values"] = [train_transforms(image) for image in images]
         return examples
 
     if training_args.do_train:
@@ -422,8 +392,6 @@ def main():
             checkpoint = last_checkpoint
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()
-        tokenizer.save_pretrained(training_args.output_dir)
-        image_processor.save_pretrained(training_args.output_dir)
         trainer.log_metrics("train", train_result.metrics)
         trainer.save_metrics("train", train_result.metrics)
         trainer.save_state()
@@ -458,18 +426,26 @@ def main():
         "[T]=45.00; [HD]=21.60, 22.26, 617.84, 55.29, 45.41, 206.18"
         ]
     images = [Image.open(image_path) for image_path in image_paths]
-    inputs = image_processor(
-        text=texts, images=images, return_tensors="pt", padding=True
-    )
+
+    image_processor = VaeImageProcessor(vae_scale_factor=8)
+    images = [Image.open(image_path).convert('RGB') for image_path in image_paths]
+    inputs = {
+        'pixel_values': image_processor.preprocess(
+            images, 
+            width=config.vision_config.image_size, 
+            height=config.vision_config.image_size
+        ).cuda()
+    }
+
     text_inputs = tokenizer(texts, padding="max_length", max_length=tokenizer.model_max_length, truncation=True, return_tensors="pt")
     text_inputs = {k: v.to(model.device) for k, v in text_inputs.items()}
 
-    inputs['pixel_values'] = inputs['pixel_values'].cuda()
     model = model.cuda()
 
     outputs = model(pixel_values=inputs['pixel_values'], **text_inputs)
     logits_per_image = outputs.logits_per_image
-    print("logits_per_image:", logits_per_image)
+    print("logits_per_image:")
+    print(logits_per_image.softmax(-1).round(decimals=2))
 
     if training_args.push_to_hub:
         trainer.push_to_hub(**kwargs)
