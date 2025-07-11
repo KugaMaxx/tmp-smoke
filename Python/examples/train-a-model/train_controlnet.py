@@ -38,7 +38,7 @@ from accelerate.utils import ProjectConfiguration, set_seed
 
 # diffusers
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel, StableDiffusionImg2ImgPipeline, StableDiffusionPipeline
+from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel, StableDiffusionControlNetPipeline, ControlNetModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils.import_utils import is_xformers_available, is_wandb_available, is_bitsandbytes_available
 
@@ -554,22 +554,23 @@ def prepare_dataset(args, tokenizer, accelerator):
     return train_dataloader
 
 
-def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, step, is_final_validation=False):
+def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, accelerator, weight_dtype, step, is_final_validation=False):
     if args.validation_prompts is None:
         return None
     
     logger.info("Running validation... ")
     if not is_final_validation:
-        unet = accelerator.unwrap_model(unet)
+        controlnet = accelerator.unwrap_model(controlnet)
     else:
-        unet = UNet2DConditionModel.from_pretrained(args.output_dir, subfolder="unet", torch_dtype=weight_dtype)
+        controlnet = ControlNetModel.from_pretrained(args.output_dir, subfolder="controlnet", torch_dtype=weight_dtype)
 
-    pipeline = StableDiffusionPipeline.from_pretrained(
+    pipeline = StableDiffusionControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         vae=vae,
         text_encoder=text_encoder,
         tokenizer=tokenizer,
         unet=unet,
+        controlnet=controlnet,
         safety_checker=None,
         revision=args.revision,
         variant=args.variant,
@@ -595,13 +596,13 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
 
         with autocast_ctx:
             validation_result = pipeline(
-                validation_prompt, num_inference_steps=20, generator=generator, height=args.resolution, width=args.resolution
+                validation_prompt, validation_image, num_inference_steps=20, generator=generator, height=args.resolution, width=args.resolution
             ).images[0]
 
         images.extend([validation_target, validation_result])
 
     for tracker in accelerator.trackers:
-        tracker_key = "final" if is_final_validation else "validation"
+        tracker_key = "validation"
         if tracker.name == "tensorboard":
             np_images = np.stack([img for img in images])
             tracker.writer.add_images(tracker_key, np_images, step, dataformats="NHWC")
@@ -662,6 +663,7 @@ if __name__ == "__main__":
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
+    controlnet = ControlNetModel.from_unet(unet)
 
     tokenizer = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
@@ -673,7 +675,8 @@ if __name__ == "__main__":
     # Freeze vae and text_encoder and set unet to trainable
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
-    unet.train()
+    unet.requires_grad_(False)
+    controlnet.train()
 
     # For mixed precision training we cast all non-trainable weights to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
@@ -694,11 +697,11 @@ if __name__ == "__main__":
 
     # Enable xformers memory efficient attention if specified
     if args.enable_xformers_memory_efficient_attention:
-        unet.enable_xformers_memory_efficient_attention()
+        controlnet.enable_xformers_memory_efficient_attention()
 
     # Enable gradient checkpointing for memory savings if specified
     if args.gradient_checkpointing:
-        unet.enable_gradient_checkpointing()
+        controlnet.enable_gradient_checkpointing()
 
     # Enable TF32 for faster training on Ampere GPUs, if specified
     if args.allow_tf32:
@@ -728,7 +731,7 @@ if __name__ == "__main__":
         overrode_max_train_steps = True
 
     optimizer = optimizer_cls(
-        unet.parameters(),
+        controlnet.parameters(),
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -743,8 +746,8 @@ if __name__ == "__main__":
     )
 
     # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
+    controlnet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        controlnet, optimizer, train_dataloader, lr_scheduler
     )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -813,7 +816,7 @@ if __name__ == "__main__":
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(unet):
+            with accelerator.accumulate(controlnet):
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
@@ -835,6 +838,16 @@ if __name__ == "__main__":
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"], return_dict=False)[0]
 
+                # Get the controlnet conditioning image
+                controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
+                down_block_res_samples, mid_block_res_sample = controlnet(
+                    noisy_latents,
+                    timesteps,
+                    encoder_hidden_states=encoder_hidden_states,
+                    controlnet_cond=controlnet_image,
+                    return_dict=False,
+                )
+
                 # Set target according to the noise scheduler type
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
@@ -842,7 +855,16 @@ if __name__ == "__main__":
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
+                model_pred = unet(
+                    noisy_latents,
+                    timesteps,
+                    encoder_hidden_states=encoder_hidden_states,
+                    down_block_additional_residuals=[
+                        sample.to(dtype=weight_dtype) for sample in down_block_res_samples
+                    ],
+                    mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
+                    return_dict=False,
+                )[0]
 
                 # Compute the losses
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
@@ -854,7 +876,7 @@ if __name__ == "__main__":
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                    accelerator.clip_grad_norm_(controlnet.parameters(), args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -900,6 +922,7 @@ if __name__ == "__main__":
                             text_encoder,
                             tokenizer,
                             unet,
+                            controlnet,
                             args,
                             accelerator,
                             weight_dtype,
@@ -915,14 +938,15 @@ if __name__ == "__main__":
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = accelerator.unwrap_model(unet)
+        controlnet = accelerator.unwrap_model(controlnet)
 
-        pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
+        pipeline = StableDiffusionControlNetPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             unet=unet,
+            controlnet=controlnet,
             safety_checker=None,
             revision=args.revision,
             variant=args.variant,
