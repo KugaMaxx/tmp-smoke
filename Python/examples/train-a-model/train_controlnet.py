@@ -146,7 +146,7 @@ def parse_args():
     parser.add_argument(
         "--validation_steps",
         type=int,
-        default=1,
+        default=100,
         help="Run validation every X epochs.",
     )
 
@@ -160,7 +160,7 @@ def parse_args():
     parser.add_argument(
         "--cache_dir",
         type=str,
-        default="/root/autodl-tmp/",
+        default="/root/autodl-tmp/cache",
         help="The directory where the downloaded models and datasets will be stored.",
     )
     parser.add_argument(
@@ -219,7 +219,7 @@ def parse_args():
     parser.add_argument(
         "--resolution",
         type=int,
-        default=2048,
+        default=512,
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
@@ -688,6 +688,7 @@ if __name__ == "__main__":
     
     # Move text_encode and vae to gpu and cast to weight_dtype
     vae.to(accelerator.device, dtype=weight_dtype)
+    unet.to(accelerator.device, dtype=weight_dtype)
     text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # Get the target for loss depending on the prediction type
@@ -833,7 +834,7 @@ if __name__ == "__main__":
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps).to(dtype=weight_dtype)
 
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"], return_dict=False)[0]
@@ -851,6 +852,8 @@ if __name__ == "__main__":
                 # Set target according to the noise scheduler type
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
+                elif noise_scheduler.config.prediction_type == "v_prediction":
+                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
