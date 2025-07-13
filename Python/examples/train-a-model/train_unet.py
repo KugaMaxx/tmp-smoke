@@ -228,7 +228,7 @@ def parse_args():
     parser.add_argument(
         "--center_crop",
         default=False,
-        action="store_false",
+        action="store_true",
         help=(
             "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
             " cropped. The images will be resized to the resolution first before cropping."
@@ -236,7 +236,7 @@ def parse_args():
     )
     parser.add_argument(
         "--random_flip",
-        action="store_false",
+        action="store_true",
         help="whether to randomly flip images horizontally",
     )
 
@@ -248,13 +248,13 @@ def parse_args():
         help="A seed for reproducible training."
     )
     parser.add_argument(
-        "--train_batch_size", 
+        "--train_batch_size",
         type=int, 
         default=1, 
         help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument(
-        "--num_train_epochs", 
+        "--num_train_epochs",
         type=int, 
         default=10
     )
@@ -573,7 +573,7 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
         safety_checker=None,
         revision=args.revision,
         variant=args.variant,
-        torch_dtype=weight_dtype,
+        torch_dtype=weight_dtype
     )
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
