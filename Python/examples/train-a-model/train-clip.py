@@ -254,9 +254,14 @@ def main():
     # https://huggingface.co/docs/datasets/loading_datasets.
 
     # 5. Load pretrained model, tokenizer, and image processor
-    tokenizer = CLIPTokenizer.from_pretrained(
+    # tokenizer = CLIPTokenizer.from_pretrained(
+    #     "stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="tokenizer"
+    # )
+    from custom_tokenizer import CustomTokenizer
+    tokenizer = CustomTokenizer.from_pretrained(
         "stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="tokenizer"
     )
+    tokenizer.max_length = 77  # Set max length for CLIP tokenizer
 
     model = CLIPModel.from_pretrained(
         "openai/clip-vit-large-patch14",
@@ -414,14 +419,18 @@ def main():
 
     # validation
     image_paths = [
+        "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture/train/cube_s02_h0850/cube_s02_h0850_015.png",
         "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture/train/cube_s02_h0990/cube_s02_h0990_015.png",
         "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture/train/cube_s02_h1143/cube_s02_h1143_015.png",
         "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture/train/cube_s02_h1207/cube_s02_h1207_015.png",
+        "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture/train/cube_s02_h1263/cube_s02_h1263_015.png",
     ]
     texts = [
+        "[T]=7.5; [HD]=20, 136, 20, 20, 57, 20",
         "[T]=7.5; [HD]=20, 141, 20, 20, 57, 20",
         "[T]=7.5; [HD]=20, 132, 20, 20, 69, 20",
-        "[T]=7.5; [HD]=20, 138, 20, 20, 86, 20"
+        "[T]=7.5; [HD]=20, 138, 20, 20, 86, 20",
+        "[T]=7.5; [HD]=20, 135, 20, 20, 78, 20"
         ]
     images = [Image.open(image_path) for image_path in image_paths]
 
