@@ -330,7 +330,7 @@ def main():
         return examples
 
     def transform_images(examples):
-        images = [Image.open(image_file).convert("RGB") for image_file in examples[image_column]]
+        images = [image.convert("RGB") for image in examples[image_column]]
         examples["pixel_values"] = [train_transforms(image) for image in images]
         return examples
 
@@ -414,16 +414,14 @@ def main():
 
     # validation
     image_paths = [
-        "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture-clip/validation/cube_s01_h0602/cube_s01_h0602_030.png",
-        "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture-clip/validation/cube_s02_h1966/cube_s02_h1966_150.png",
-        "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture-clip/validation/cube_s03_h1423/cube_s03_h1423_089.png",
-        "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture-clip/validation/cube_s03_h1423/cube_s03_h1423_090.png"
+        "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture/train/cube_s02_h0990/cube_s02_h0990_015.png",
+        "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture/train/cube_s02_h1143/cube_s02_h1143_015.png",
+        "/home/dszh/workspace/tmp-smoke/Python/data/cube-texture/train/cube_s02_h1207/cube_s02_h1207_015.png",
     ]
     texts = [
-        "[T]=15.00; [HD]=216.31, 20.04, 20.00, 55.10, 20.01, 20.55",
-        "[T]=75.01; [HD]=42.85, 850.30, 38.95, 68.73, 404.81, 65.37",
-        "[T]=44.50; [HD]=21.54, 22.18, 619.64, 54.62, 44.85, 206.68",
-        "[T]=45.00; [HD]=21.60, 22.26, 617.84, 55.29, 45.41, 206.18"
+        "[T]=7.5; [HD]=20, 141, 20, 20, 57, 20",
+        "[T]=7.5; [HD]=20, 132, 20, 20, 69, 20",
+        "[T]=7.5; [HD]=20, 138, 20, 20, 86, 20"
         ]
     images = [Image.open(image_path) for image_path in image_paths]
 
