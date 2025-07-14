@@ -118,7 +118,7 @@ if __name__ == '__main__':
     # make train subfolder
     print("Making train subfolder...")
     captions = []
-    for case_id, case_info in tqdm(enumerate(index["train"]), total=len(index["train"])):
+    for case_id, case_info in tqdm(enumerate(index["train"]), total=len(index["train"])):            
         database_case = args.fds_data_dir / case_info['source']
         train_case = args.fds_data_dir / case_info['target']
 
@@ -129,6 +129,8 @@ if __name__ == '__main__':
         train_q_files = sorted(train_case.glob('*.q'), key=lambda x: extract_time(x.name))
 
         for file_id, (database_q_file, train_q_file) in enumerate(zip(database_q_files, train_q_files)):
+            if file_id < 3: continue
+
             # convert plot3d data to flipbook image
             database_plot3d_img = plot3d_to_flipbook(database_q_file)[args.quantity]
             train_plot3d_img = plot3d_to_flipbook(train_q_file)[args.quantity]
@@ -149,15 +151,15 @@ if __name__ == '__main__':
 
             # residual check
             # Remove 'Time' column before calculating residuals
-            database_devc = database_devc_data.drop(columns=['Time'], errors='ignore').iloc[file_id]
-            train_devc = train_devc_data.drop(columns=['Time'], errors='ignore').iloc[file_id]
-            residual_devc = train_devc - database_devc
+            database_devc = database_devc_data.iloc[file_id]
+            train_devc = train_devc_data.iloc[file_id]
             
             captions.append(
                 {
                     "conditioning_image": f"database/{database_image_dir.stem}/{database_image_name}",
                     "image": f"train/{train_image_dir.stem}/{train_image_name}",
-                    "text": ','.join([f"{float(devc) + 1e-2:.2f}" for devc in residual_devc]),
+                    "text": f"[T]={train_devc['Time']:.2f}; " + \
+                            '[HD]=' + ', '.join([f"{float(devc):03}" for col, devc in zip(train_devc.index, train_devc) if col != 'Time'])
                 }
             )
 
@@ -184,6 +186,22 @@ if __name__ == '__main__':
             validation_image_name = f"{validation_case.stem}_{file_id:03d}.png"
             validation_image = Image.fromarray(validation_plot3d_img)
             validation_image.save(validation_image_dir / validation_image_name)
+
+            validation_devc = validation_devc_data.iloc[file_id]
+
+            captions.append(
+                {
+                    "conditioning_image": None,
+                    "image": f"validation/{validation_image_dir.stem}/{validation_image_name}",
+                    "text": f"[T]={validation_devc['Time']:.2f}; " + \
+                            '[HD]=' + ', '.join([f"{float(devc):.2f}" for col, devc in zip(validation_devc.index, validation_devc) if col != 'Time'])
+                }
+            )
+
+    with open(f"{texture_data_validation_dir / 'prompt.jsonl'}", 'w') as f:
+        for caption in captions:
+            json.dump(caption, f)
+            f.write("\n")
 
     # generate huggingface dataset format
     os.system("cp "
