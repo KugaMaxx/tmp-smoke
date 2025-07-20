@@ -51,7 +51,7 @@ logger = get_logger(__name__, log_level="INFO")
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser = argparse.ArgumentParser(description="Train the unet from latent stable diffusion.")
     
     # pretrained model
     parser.add_argument(
@@ -86,20 +86,20 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--dataset_config_name",
-        type=str,
-        default=None,
-        help="The config of the Dataset, leave as None if there's only one config.",
-    )
-    parser.add_argument(
         "--train_data_dir",
         type=str,
-        default="/root/autodl-tmp/cube-texture-1024",
+        default="/root/autodl-tmp/cube-texture",
         help=(
             "A folder containing the training data. Folder contents must follow the structure described in"
             " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
             " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
         ),
+    )
+    parser.add_argument(
+        "--dataset_config_name",
+        type=str,
+        default=None,
+        help="The config of the Dataset, leave as None if there's only one config.",
     )
     parser.add_argument(
         "--image_column", 

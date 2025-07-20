@@ -35,7 +35,7 @@ With gradient_checkpointing and mixed_precision it should be possible to fine tu
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
-accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
+accelerate launch --mixed_precision="fp16"  train_unet.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name=$DATASET_NAME \
   --use_ema \

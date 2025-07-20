@@ -54,6 +54,15 @@ class MyDataset(datasets.GeneratorBasedBuilder):
                     "conditioning_images_dir": base_path,
                 },
             ),
+            datasets.SplitGenerator(
+                name=datasets.Split.VALIDATION,
+                # These kwargs will be passed to _generate_examples
+                gen_kwargs={
+                    "metadata_path": base_path / "validation" / "prompt.jsonl",
+                    "images_dir": base_path,
+                    "conditioning_images_dir": base_path,
+                },
+            ),
         ]
 
     def _generate_examples(self, metadata_path, images_dir, conditioning_images_dir):

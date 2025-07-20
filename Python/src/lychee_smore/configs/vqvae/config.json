@@ -1,0 +1,61 @@
+{
+    "vqvae_config": {
+        "model_name": "vqvae",
+        "model_save_name": "vqvae",
+        "pretrained": false,
+        "learning_rate": 1e-3,
+        "num_training_updates": 15000,
+        "block_hidden_size": 128,
+        "num_residual_layers": 2,
+        "res_hidden_size": 64,
+        "embedding_dim": 64,
+        "num_embeddings": 512,
+        "commitment_cost": 0.25,
+        "compression_factor": 4,
+        "dataset": "electricity"
+    },
+    "comet_config": {
+        "api_key": "add yours here",
+        "project_name": "add yours here",
+        "workspace": "add yours here"
+    }
+}
+
+
+{
+  "_class_name": "VQ_VAE",
+  "_diffusers_version": "0.34.0.dev0",
+  "act_fn": "silu",
+  "block_out_channels": [
+    128,
+    256,
+    512,
+    512
+  ],
+  "down_block_types": [
+    "DownEncoderBlock2D",
+    "DownEncoderBlock2D",
+    "DownEncoderBlock2D",
+    "DownEncoderBlock2D"
+  ],
+  "force_upcast": true,
+  "in_channels": 3,
+  "latent_channels": 4,
+  "latents_mean": null,
+  "latents_std": null,
+  "layers_per_block": 2,
+  "mid_block_add_attention": true,
+  "norm_num_groups": 32,
+  "out_channels": 3,
+  "sample_size": 256,
+  "scaling_factor": 0.18215,
+  "shift_factor": null,
+  "up_block_types": [
+    "UpDecoderBlock2D",
+    "UpDecoderBlock2D",
+    "UpDecoderBlock2D",
+    "UpDecoderBlock2D"
+  ],
+  "use_post_quant_conv": true,
+  "use_quant_conv": true
+}

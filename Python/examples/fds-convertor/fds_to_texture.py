@@ -129,25 +129,25 @@ if __name__ == '__main__':
         train_q_files = sorted(train_case.glob('*.q'), key=lambda x: extract_time(x.name))
 
         for file_id, (database_q_file, train_q_file) in enumerate(zip(database_q_files, train_q_files)):
-            if file_id < 3: continue
-
-            # convert plot3d data to flipbook image
-            database_plot3d_img = plot3d_to_flipbook(database_q_file)[args.quantity]
-            train_plot3d_img = plot3d_to_flipbook(train_q_file)[args.quantity]
-
-            # save database image
+            # prepare database image folder
             database_image_dir = texture_data_database_dir / database_case.stem
             database_image_dir.mkdir(parents=True, exist_ok=True)
             database_image_name = f"{database_case.stem}_{file_id:03d}.png"
-            database_image = Image.fromarray(database_plot3d_img)
-            database_image.save(database_image_dir / database_image_name)
 
-            # save train image
+            # prepare train image folder
             train_image_dir = texture_data_train_dir / train_case.stem
             train_image_dir.mkdir(parents=True, exist_ok=True)
             train_image_name = f"{train_case.stem}_{file_id:03d}.png"
-            train_image = Image.fromarray(train_plot3d_img)
-            train_image.save(train_image_dir / train_image_name)
+
+            # # save database image
+            # database_plot3d_img = plot3d_to_flipbook(database_q_file)[args.quantity]
+            # database_image = Image.fromarray(database_plot3d_img)
+            # database_image.save(database_image_dir / database_image_name)
+
+            # # save train image
+            # train_plot3d_img = plot3d_to_flipbook(train_q_file)[args.quantity]
+            # train_image = Image.fromarray(train_plot3d_img)
+            # train_image.save(train_image_dir / train_image_name)
 
             # residual check
             # Remove 'Time' column before calculating residuals
@@ -158,8 +158,9 @@ if __name__ == '__main__':
                 {
                     "conditioning_image": f"database/{database_image_dir.stem}/{database_image_name}",
                     "image": f"train/{train_image_dir.stem}/{train_image_name}",
-                    "text": f"[T]={train_devc['Time']:.2f}; " + \
-                            '[HD]=' + ', '.join([f"{float(devc):03}" for col, devc in zip(train_devc.index, train_devc) if col != 'Time'])
+                    "text": "[HRR] " + f"{int(case_info['target'][-4:])}; " + \
+                            "[T] " + f"{file_id}; " + \
+                            "[HD] " + ", ".join([f"{float(devc):.0f}" for col, devc in zip(train_devc.index, train_devc) if 'HD' in col])
                 }
             )
 
@@ -177,24 +178,25 @@ if __name__ == '__main__':
         validation_q_files = sorted(validation_case.glob('*.q'), key=lambda x: extract_time(x.name))
 
         for file_id, validation_q_file in enumerate(validation_q_files):
-            # convert plot3d data to flipbook image
-            validation_plot3d_img = plot3d_to_flipbook(validation_q_file)[args.quantity]
-
-            # save validation image
+            # prepare validation image folder
             validation_image_dir = texture_data_validation_dir / validation_case.stem
             validation_image_dir.mkdir(parents=True, exist_ok=True)
             validation_image_name = f"{validation_case.stem}_{file_id:03d}.png"
-            validation_image = Image.fromarray(validation_plot3d_img)
-            validation_image.save(validation_image_dir / validation_image_name)
+
+            # # save validation image
+            # validation_plot3d_img = plot3d_to_flipbook(validation_q_file)[args.quantity]
+            # validation_image = Image.fromarray(validation_plot3d_img)
+            # validation_image.save(validation_image_dir / validation_image_name)
 
             validation_devc = validation_devc_data.iloc[file_id]
 
             captions.append(
                 {
-                    "conditioning_image": None,
+                    "conditioning_image": f"validation/{validation_image_dir.stem}/{validation_image_name}",
                     "image": f"validation/{validation_image_dir.stem}/{validation_image_name}",
-                    "text": f"[T]={validation_devc['Time']:.2f}; " + \
-                            '[HD]=' + ', '.join([f"{float(devc):.2f}" for col, devc in zip(validation_devc.index, validation_devc) if col != 'Time'])
+                    "text": "[HRR] " + f"{int(case_info['target'][-4:])}; " + \
+                            "[T] " + f"{file_id}; " + \
+                            "[HD] " + ", ".join([f"{float(devc):.0f}" for col, devc in zip(validation_devc.index, validation_devc) if 'HD' in col])
                 }
             )
 
