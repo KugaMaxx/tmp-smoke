@@ -82,7 +82,6 @@ class VQTokenizer(PreTrainedTokenizer):
         self,
         vq_config: Optional[Union[Dict[str, Any], VQConfig]] = None,
         vq_model: VQModel = None,
-        text_length: int = 256,
         errors="replace",
         unk_token="<|endoftext|>",
         bos_token="<|startoftext|>",
@@ -93,16 +92,6 @@ class VQTokenizer(PreTrainedTokenizer):
         bos_token = AddedToken(bos_token, lstrip=False, rstrip=False) if isinstance(bos_token, str) else bos_token
         eos_token = AddedToken(eos_token, lstrip=False, rstrip=False) if isinstance(eos_token, str) else eos_token
         unk_token = AddedToken(unk_token, lstrip=False, rstrip=False) if isinstance(unk_token, str) else unk_token
-
-        super().__init__(
-            text_length=text_length,
-            errors=errors,
-            unk_token=unk_token,
-            bos_token=bos_token,
-            eos_token=eos_token,
-            pad_token=pad_token,
-            **kwargs,
-        )
 
         if vq_model is None:
             # If no vq_config is provided, use the default VQConfig
@@ -131,8 +120,14 @@ class VQTokenizer(PreTrainedTokenizer):
         # Set VQ model to evaluation mode to ensure consistent tokenization
         self.vq_model.eval()
 
-        # Set RevIN for input normalization
-        self.revin = RevIN(text_length, eps=1e-5, affine=False)
+        super().__init__(
+            errors=errors,
+            unk_token=unk_token,
+            bos_token=bos_token,
+            eos_token=eos_token,
+            pad_token=pad_token,
+            **kwargs,
+        )
 
     @classmethod
     def from_pretrained(
@@ -173,61 +168,152 @@ class VQTokenizer(PreTrainedTokenizer):
         # Save VQ config
         self.vq_config.save_pretrained(vq_save_directory)
 
-    def _tokenize(self, text: Union[str, list]) -> torch.Tensor:
+    def _tokenize(self, text: Union[str, list[list[float]]]) -> torch.Tensor:
         """
         Tokenizes a time-series string or array into quantized codes.
-        Supports input as a string (semicolon/comma separated), list, or torch.Tensor.
+        Supports input as a string (semicolon/comma separated) or list.
+        """
+        # Convert input string or list to tensor
+        inputs = self.convert_string_to_tensor(text, is_norm=True)
+        inputs = inputs.unsqueeze(0).to(self.vq_model.device)
+
+        # Get quantization codes
+        tokens = self.vq_model.get_codes(inputs).squeeze().tolist()
+        tokens = [str(token) for token in tokens]
+
+        return tokens
+    
+    def convert_string_to_tensor(self, text: Union[str, list[list[float]]], is_norm: bool = True) -> torch.Tensor:
+        """
+        Convert a string or list of lists to a tensor for tokenization.
         """
         if isinstance(text, str):
             # Use regex to split by semicolon (ignoring surrounding whitespace)
             text = re.split(r'\s*;\s*', text.strip())
 
             # Extract numbers from each dimension string
-            inputs = [[float(num) for num in re.findall(r'[-+]?(?:\d+\.?\d*|\.\d+)', dim)] for dim in text if dim]
-            inputs = torch.tensor(inputs, dtype=torch.float32)
-            inputs = self.revin(inputs, mode='norm')  # Normalize inputs
+            text = [[float(num) for num in re.findall(r'[-+]?(?:\d+\.?\d*|\.\d+)', dim)] for dim in text if dim]
+            inputs = torch.tensor(text, dtype=torch.float32)
 
-        elif isinstance(text, (list, tuple)):
+        elif isinstance(text, list) and len(text) != 0 and isinstance(text[0], (list)):
             # Convert list/tuple to tensor and add batch dimension if needed
             inputs = torch.tensor(text, dtype=torch.float32)
 
         else:
-            raise ValueError("Input must be a string or list.")
+            raise ValueError("Input must be a string or 2d list.")
 
-        # Get quantization codes
-        inputs = inputs.unsqueeze(0).to(self.vq_model.device)
-        tokens = self.vq_model.get_codes(inputs).tolist()
+        # Set RevIN for input normalization
+        revin = RevIN(len(text[0]), eps=1e-5, affine=False)
 
-        return tokens
+        # Normalize inputs if required
+        inputs = revin(inputs, mode='norm') if is_norm else inputs
+
+        return inputs
 
     @property
     def vocab_size(self):
-        """Return the vocabulary size of the VQ model."""
-        return 1
-        # return getattr(self.vq_model, 'num_embeddings', 0)
+        """Return the vocabulary size of the VQ model plus special tokens."""
+        base_vocab_size = getattr(self.vq_model, 'num_embeddings')
+        # Add space for special tokens
+        return base_vocab_size + len(self.added_tokens_encoder)
+
+    def get_vocab(self):
+        """Return the vocabulary as a dictionary."""
+        # Base VQ tokens
+        base_vocab_size = getattr(self.vq_model, 'num_embeddings')
+        vocab = {str(i): i for i in range(base_vocab_size)}
+            
+        return vocab
 
     def _convert_token_to_id(self, token):
         """Convert a token to its corresponding ID."""
-        # For VQ tokenizer, tokens are already IDs
+        # Check if it's a special token first
+        if token in self.added_tokens_encoder:
+            return self.added_tokens_encoder[token]
+        
+        # Otherwise, treat as regular VQ token
         try:
             return int(token)
-        except (ValueError, TypeError):
+        except ValueError:
             return self.unk_token_id
-
+    
     def _convert_id_to_token(self, index):
         """Convert an ID to its corresponding token."""
-        # For VQ tokenizer, IDs are the tokens
+        # Check if it's a special token first
+        if index in self.added_tokens_decoder:
+            return self.added_tokens_decoder[index]
+        
+        # Otherwise, treat as regular VQ token
         return str(index)
 
-    def get_vocab(self):
+    def build_inputs_with_special_tokens(self, token_ids_0, token_ids_1=None):
         """
-        Return the vocabulary as a dictionary.
-        Key: decoded data (as string representation)
-        Value: codebook index/combination
+        Build model inputs from a sequence or a pair of sequence for sequence classification tasks by concatenating and
+        adding special tokens. A VQ sequence has the following format:
+
+        - single sequence: `<|startoftext|> X <|endoftext|>`
+
+        Args:
+            token_ids_0 (List[int]):
+                List of IDs to which the special tokens will be added.
+            token_ids_1 (List[int], optional):
+                Optional second list of IDs for sequence pairs.
+
+        Returns:
+            List[int]: List of input IDs with the appropriate special tokens.
         """
-        vocab = {'1': 1}
-            
-        return vocab
+        bos_token = [self.bos_token_id] if self.bos_token_id is not None else []
+        eos_token = [self.eos_token_id] if self.eos_token_id is not None else []
+
+        if token_ids_1 is None:
+            return bos_token + token_ids_0 + eos_token
+        return bos_token + token_ids_0 + eos_token + eos_token + token_ids_1 + eos_token
+
+    def get_special_tokens_mask(self, token_ids_0, token_ids_1=None, already_has_special_tokens=False):
+        """
+        Retrieve sequence ids from a token list that has no special tokens added. This method is called when adding
+        special tokens using the tokenizer `prepare_for_model` method.
+
+        Args:
+            token_ids_0 (List[int]):
+                List of IDs.
+            token_ids_1 (List[int], optional):
+                Optional second list of IDs for sequence pairs.
+            already_has_special_tokens (bool, optional, defaults to False):
+                Whether or not the token list is already formatted with special tokens for the model.
+
+        Returns:
+            List[int]: A list of integers in the range [0, 1]: 1 for a special token, 0 for a sequence token.
+        """
+        if already_has_special_tokens:
+            return super().get_special_tokens_mask(
+                token_ids_0=token_ids_0, token_ids_1=token_ids_1, already_has_special_tokens=True
+            )
+
+        if token_ids_1 is None:
+            return [1] + ([0] * len(token_ids_0)) + [1]
+        return [1] + ([0] * len(token_ids_0)) + [1] + [1] + ([0] * len(token_ids_1)) + [1]
+
+    def create_token_type_ids_from_sequences(self, token_ids_0, token_ids_1=None):
+        """
+        Create a mask from the two sequences passed. VQ does not make use of token type ids, therefore a list of
+        zeros is returned.
+
+        Args:
+            token_ids_0 (List[int]):
+                List of IDs.
+            token_ids_1 (List[int], optional):
+                Optional second list of IDs for sequence pairs.
+
+        Returns:
+            List[int]: List of zeros.
+        """
+        bos_token = [self.bos_token_id] if self.bos_token_id is not None else []
+        eos_token = [self.eos_token_id] if self.eos_token_id is not None else []
+
+        if token_ids_1 is None:
+            return len(bos_token + token_ids_0 + eos_token) * [0]
+        return len(bos_token + token_ids_0 + eos_token + eos_token + token_ids_1 + eos_token) * [0]
 
     def save_vocabulary(self, save_directory, filename_prefix=None):
         """
