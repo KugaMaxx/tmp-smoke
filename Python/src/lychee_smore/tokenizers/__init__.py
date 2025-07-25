@@ -1,3 +1,3 @@
-from .vq_tokenizers import VQTokenizer
+from .vq_tokenizer import VQTokenizer
 
 __all__ = ["VQTokenizer"]
