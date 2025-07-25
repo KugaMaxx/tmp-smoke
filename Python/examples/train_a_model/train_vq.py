@@ -105,7 +105,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="./vq_tokenizer-v2",
+        default="./vq_tokenizer",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -166,7 +166,7 @@ def parse_args():
     parser.add_argument(
         "--train_batch_size",
         type=int, 
-        default=32, 
+        default=128, 
         help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument(
@@ -177,7 +177,7 @@ def parse_args():
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=1e-4,
+        default=5e-3,
         help="Initial learning rate (after the potential warmup period) to use.",
     )
 
@@ -252,21 +252,12 @@ def log_validation(args, tokenizer, dataloader, global_step, writer):
         for id, batch in enumerate(dataloader['validation']):
             if id not in args.validation_ids: continue
 
-            # # Log the tokens
-            # logger.info(f"  Tokens: {tokenizer(batch["texts"])}")
+            # Log the tokens
+            logger.info(f"  Tokens: {tokenizer(batch["texts"])}")
 
-            # # Convert the input text to tensor and run the tokenizer pipeline
-            # data = tokenizer.convert_string_to_tensor(batch["texts"][0], is_norm=False).cpu().numpy()
-            # pred = tokenizer.run_pipeline(batch["texts"][0], is_norm=False).cpu().numpy()
-
-            # Normalize and convert input data to tensor
-            text = batch["texts"][0]
-            text_inputs = tokenizer(text, max_length=77, padding="max_length", truncation=True)
-            logger.info(text_inputs)
-            data = tokenizer.convert_string_to_tensor(text, is_norm=False).cpu()
-            pred = tokenizer.reconstruct(text, is_norm=True).cpu()
-            logger.info(data)
-            logger.info(pred)
+            # Convert the input text to tensor and run the tokenizer pipeline
+            data = tokenizer.convert_string_to_tensor(batch["texts"][0], is_norm=False).cpu().numpy()
+            pred = tokenizer.run_pipeline(batch["texts"][0], is_norm=False).cpu().numpy()
 
             import matplotlib.pyplot as plt
 
@@ -371,7 +362,7 @@ if __name__ == "__main__":
             in_channels=8,
             out_channels=8,
             hidden_dims=[64, 128, 256],
-            latent_dim=64,
+            latent_dim=128,
             num_embeddings=2048,
             commitment_cost=0.25
         )
@@ -429,7 +420,7 @@ if __name__ == "__main__":
             pred = outputs['reconstructed']
 
             # Compute loss
-            recon_loss = F.l1_loss(pred, data)
+            recon_loss = F.mse_loss(pred, data)
             vq_loss = outputs['vq_loss']
             total_loss = recon_loss + vq_loss
 
