@@ -204,11 +204,10 @@ class VQTokenizer(PreTrainedTokenizer):
             raise ValueError("Input must be a string or 2d list.")
 
         # Set RevIN for input normalization
-        self.revin = RevIN(len(text[0]), eps=1e-5, affine=False)
+        revin = RevIN(len(text[0]), eps=1e-5, affine=False)
 
         # Normalize inputs
-        revin_inputs = self.revin(inputs, mode='norm')
-        inputs = revin_inputs if is_norm else inputs
+        inputs = revin(inputs, mode='norm') if is_norm else inputs
 
         return inputs
 
@@ -217,7 +216,13 @@ class VQTokenizer(PreTrainedTokenizer):
         Convert a string or list of lists to a tensor for tokenization.
         """
         # Convert input string or list to tensor
-        inputs = self.convert_string_to_tensor(text, is_norm=is_norm)
+        inputs = self.convert_string_to_tensor(text, is_norm=False)
+
+        # Normalize inputs
+        revin = RevIN(len(inputs[0]), eps=1e-5, affine=False)
+        inputs = revin(inputs, mode='norm')
+
+        # Unsqueeze to add batch dimension
         inputs = inputs.unsqueeze(0).to(self.vq_model.device)
 
         with torch.no_grad():
@@ -226,52 +231,7 @@ class VQTokenizer(PreTrainedTokenizer):
             pred = outputs['reconstructed'].squeeze().cpu()
 
         # Denormalize the output if normalization was applied
-        pred = self.revin(pred, mode='denorm') if not is_norm else pred
-
-        return pred
-    
-    def reconstruct(self, text: Union[str, list[list[float]]], is_norm: bool = True) -> torch.Tensor:
-        """
-        Convert a string or list of lists to a tensor for tokenization.
-        """
-        if isinstance(text, str):
-            # Use regex to split by semicolon (ignoring surrounding whitespace)
-            text = re.split(r'\s*;\s*', text.strip())
-
-            # Extract numbers from each dimension string
-            text = [[float(num) for num in re.findall(r'[-+]?(?:\d+\.?\d*|\.\d+)', dim)] for dim in text if dim]
-            inputs = torch.tensor(text, dtype=torch.float32)
-
-        elif isinstance(text, list) and len(text) != 0 and isinstance(text[0], (list)):
-            # Convert list/tuple to tensor and add batch dimension if needed
-            inputs = torch.tensor(text, dtype=torch.float32)
-
-        else:
-            raise ValueError("Input must be a string or 2d list.")
-
-        inputs = inputs.to(self.vq_model.device)  # Ensure inputs are on CPU for normalization
-
-        # Set RevIN for input normalization
-        revin = RevIN(len(text[0]), eps=1e-5, affine=False)
-        revin = revin.to(self.vq_model.device)  # Move RevIN to the same device as the VQ model
-
-        # Normalize inputs if required
-        if is_norm:
-            inputs = revin(inputs, mode='norm')
-
-        print(inputs)
-
-        inputs = inputs.unsqueeze(0).to(self.vq_model.device)
-
-        outputs = self.vq_model(inputs)
-        pred = outputs['reconstructed'].squeeze()
-
-        print(pred)
-        print(F.mse_loss(pred, inputs))
-
-        # Denormalize the output if normalization was applied
-        if is_norm:
-            pred = revin(pred, mode='denorm') # Set model back to training mode if needed
+        pred = revin(pred, mode='denorm') if not is_norm else pred
 
         return pred
 
