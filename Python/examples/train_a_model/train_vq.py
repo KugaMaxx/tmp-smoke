@@ -1,5 +1,8 @@
+import math
 import shutil
 import argparse
+import datetime
+import logging
 from pathlib import Path
 from tqdm.auto import tqdm
 
@@ -12,6 +15,11 @@ from datasets import load_dataset
 from lychee_smore.tokenizers import VQTokenizer
 from lychee_smore.models import VQConfig
 from lychee_smore.utils.common_utils import set_seed
+from torch.utils.tensorboard import SummaryWriter
+import numpy as np
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 
 def parse_args():
@@ -52,7 +60,7 @@ def parse_args():
     parser.add_argument(
         "--dataset_dir",
         type=str,
-        default="/home/dszh/workspace/tmp-smoke/Python/data/cube-texture",
+        default="/home/dszh/workspace/tmp-smoke/Python/data/corridor-texture",
         help=(
             "A folder containing the training data. Folder contents must follow the structure described in"
             " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
@@ -78,11 +86,26 @@ def parse_args():
         help="The column of the dataset containing a caption or a list of captions.",
     )
 
-    # logging
+    # validation
+    parser.add_argument(
+        "--validation_ids",
+        type=str,
+        default=[1383, 1385, 1400],
+        nargs="*",
+        help=("A set of validation data evaluated every `--validation_steps`."),
+    )
+    parser.add_argument(
+        "--validation_steps",
+        type=int,
+        default=5000,
+        help="Run validation every X steps.",
+    )
+
+    # directories
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="./vq_tokenizer",
+        default="./vq_tokenizer-v2",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -91,12 +114,21 @@ def parse_args():
         default=None,
         help="The directory where the downloaded models and datasets will be stored.",
     )
+    parser.add_argument(
+        "--logging_dir",
+        type=str,
+        default="logs",
+        help=(
+            "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
+            " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
+        ),
+    )
 
     # checkpointing
     parser.add_argument(
         "--checkpointing_steps",
         type=int,
-        default=500,
+        default=5000,
         help=(
             "Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"
             " training using `--resume_from_checkpoint`."
@@ -140,7 +172,7 @@ def parse_args():
     parser.add_argument(
         "--num_train_epochs",
         type=int, 
-        default=100
+        default=300
     )
     parser.add_argument(
         "--learning_rate",
@@ -170,7 +202,7 @@ def prepare_dataset(args):
 
     def collate_fn(batch): 
         return {
-            "inputs": [item[args.caption_column] for item in batch]
+            "texts": [item[args.caption_column] for item in batch]
         }
 
     dataloader = {}
@@ -185,8 +217,136 @@ def prepare_dataset(args):
     return dataloader
 
 
+def save_checkpoint(args, tokenizer, optimizer, global_step):
+    # Delete checkpoint if total checkpoints exceed limit
+    if args.checkpoints_total_limit is not None:
+        checkpoints = sorted(Path(args.output_dir).glob("checkpoint-*"), key=lambda x: int(x.stem.split("-")[1]))
+        if len(checkpoints) >= args.checkpoints_total_limit - 1:
+            for removing_checkpoint in checkpoints[:len(checkpoints) - args.checkpoints_total_limit + 1]:
+                shutil.rmtree(removing_checkpoint)
+    
+    # create checkpoint directory
+    checkpoint_path = Path(args.output_dir) / f"checkpoint-{global_step}"
+    checkpoint_path.mkdir(parents=True, exist_ok=True)
+
+    # Save tokenizer, optimizer and scheduler state
+    tokenizer.save_pretrained(checkpoint_path / "vq_tokenizer")
+    torch.save(optimizer.state_dict(), checkpoint_path / "optimizer.pt")
+
+    # Log the checkpoint saving
+    logger.info(f"Checkpoint saved at {checkpoint_path}")
+
+    return checkpoint_path
+
+
+def log_validation(args, tokenizer, dataloader, global_step, writer):
+    # If no validation IDs are provided, skip validation
+    if args.validation_ids is None or len(args.validation_ids) == 0:
+        return
+    
+    logger.info("Running validation... ")
+    with torch.no_grad():
+        tokenizer.vq_model.eval()
+        
+        # Log validation information
+        for id, batch in enumerate(dataloader['validation']):
+            if id not in args.validation_ids: continue
+
+            # # Log the tokens
+            # logger.info(f"  Tokens: {tokenizer(batch["texts"])}")
+
+            # # Convert the input text to tensor and run the tokenizer pipeline
+            # data = tokenizer.convert_string_to_tensor(batch["texts"][0], is_norm=False).cpu().numpy()
+            # pred = tokenizer.run_pipeline(batch["texts"][0], is_norm=False).cpu().numpy()
+
+            # Normalize and convert input data to tensor
+            text = batch["texts"][0]
+            text_inputs = tokenizer(text, max_length=77, padding="max_length", truncation=True)
+            logger.info(text_inputs)
+            data = tokenizer.convert_string_to_tensor(text, is_norm=False).cpu()
+            pred = tokenizer.reconstruct(text, is_norm=True).cpu()
+            logger.info(data)
+            logger.info(pred)
+
+            import matplotlib.pyplot as plt
+
+            # Calculate optimal subplot layout for all sensors
+            num_sensors = data.shape[0]
+            rows = min(2, num_sensors)
+            cols = math.ceil(num_sensors / rows)
+            fig, axes = plt.subplots(rows, cols, figsize=(6*cols, 4*rows))
+            
+            # Handle single subplot case
+            if num_sensors == 1:
+                axes = [axes]
+            elif rows == 1:
+                axes = axes if hasattr(axes, '__iter__') else [axes]
+            else:
+                # Flatten axes array for easier iteration
+                axes = axes.flatten()
+            
+            # Plot each sensor in a separate subplot
+            for sensor_idx, sensor_name in enumerate([f'Sensor {i+1}' for i in range(num_sensors)]):
+                ax = axes[sensor_idx]
+                
+                # Get data for current sensor
+                ori_sensor_data = data[sensor_idx]
+                recon_sensor_data = pred[sensor_idx]
+                
+                # Create time axis
+                time_points = np.arange(len(ori_sensor_data))
+                
+                # Plot with plot_sensor_comparison style
+                ax.plot(time_points, ori_sensor_data, '-', label='Original Data', 
+                       linewidth=2.5, alpha=0.8, color='#2E86C1')
+                ax.plot(time_points, recon_sensor_data, '--', label='Reconstructed Data', 
+                       linewidth=2.5, alpha=0.8, color='#E74C3C')
+                
+                # Set subplot title and labels
+                ax.set_title(sensor_name, fontsize=14, fontweight='bold', pad=10)
+                ax.set_xlabel('Time', fontsize=12)
+                ax.set_ylabel('Senser Data', fontsize=12)
+                ax.legend(fontsize=10)
+                ax.grid(True, alpha=0.3)
+            
+            # Hide unused subplots if any
+            total_subplots = rows * cols
+            for i in range(num_sensors, total_subplots):
+                if i < len(axes):
+                    axes[i].set_visible(False)
+            
+            plt.tight_layout()
+            
+            # Log to tensorboard
+            writer.add_figure(f'validation/data_{id}', fig, global_step)
+            plt.close(fig)
+
+        tokenizer.vq_model.train()
+
+
 if __name__ == "__main__":
     args = parse_args()
+
+    # Create output directory if it doesn't exist
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+
+    # Setup logging
+    logging_dir = Path(args.output_dir) / args.logging_dir
+    logging_dir.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        handlers=[
+            logging.FileHandler(logging_dir / f"{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log"),
+            logging.StreamHandler()  # Also output to console
+        ]
+    )
+
+    # Log arguments
+    logger.info("Training Arguments:")
+    for arg, value in sorted(vars(args).items()):
+        logger.info(f"  {arg}: {value}")
 
     # If passed along, set the training seed now.
     if args.seed is not None:
@@ -195,46 +355,54 @@ if __name__ == "__main__":
     # Load training data
     dataloader = prepare_dataset(args)
 
+    # Initialize TensorBoard writer
+    writer = SummaryWriter(log_dir=logging_dir / "tensorboard")
+
     # Initialize VQ Tokenizer
-    vq_config = VQConfig(
-        in_channels=6,
-        out_channels=6,
-        hidden_dims=[64, 128, 256],
-        latent_dim=64,
-        num_embeddings=1024,
-        commitment_cost=0.25
-    )
-    
-    # Create VQ tokenizer
-    tokenizer = VQTokenizer(vq_config=vq_config, text_length=32)
+    if args.pretrained_model_name_or_path is not None:
+        tokenizer = VQTokenizer.from_pretrained(
+            args.pretrained_model_name_or_path,
+            revision=args.revision,
+            variant=args.variant,
+            cache_dir=args.cache_dir,
+        )
+    else:
+        vq_config = VQConfig(
+            in_channels=8,
+            out_channels=8,
+            hidden_dims=[64, 128, 256],
+            latent_dim=64,
+            num_embeddings=2048,
+            commitment_cost=0.25
+        )
+        tokenizer = VQTokenizer(vq_config=vq_config)
     tokenizer.vq_model = tokenizer.vq_model.to(args.device)
     tokenizer.vq_model.train()
-    tokenizer.revin = tokenizer.revin.to(args.device)
-    tokenizer.revin.eval()
 
     # Optimizer for the VQ model
     optimizer = optim.Adam(tokenizer.vq_model.parameters(), lr=args.learning_rate)
-
-    # Create output directory if it doesn't exist
-    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     # Load from checkpoint if specified
     global_step = 0
     first_epoch = 0
     if args.resume_from_checkpoint is not None:
-        if args.resume_from_checkpoint == "latest":
-            # Load the latest checkpoint
-            checkpoint_path = sorted(Path(args.output_dir).glob("checkpoint-*"))[-1]
-        else:
-            checkpoint_path = Path(args.resume_from_checkpoint)
-
-        tokenizer.load_state_dict(torch.load(checkpoint_path / "tokenizer.pt"))
+        checkpoint_path = (
+            sorted(Path(args.output_dir).glob("checkpoint-*"))[-1]
+            if args.resume_from_checkpoint == "latest"
+            else Path(args.output_dir) / args.resume_from_checkpoint
+        )
+        
+        # Load tokenizer and optimizer state from checkpoint
+        tokenizer.from_pretrained(checkpoint_path / "vq_tokenizer")
         optimizer.load_state_dict(torch.load(checkpoint_path / "optimizer.pt"))
+        
+        # Resume from checkpoint's global step
         global_step = int(checkpoint_path.name.split("-")[-1])
         first_epoch = global_step // len(dataloader['train'])
 
-        print(f"Resuming from checkpoint: {checkpoint_path}")
-    
+        # Log the resuming checkpoint
+        logger.info(f"Resuming from checkpoint: {checkpoint_path}")
+
     # Initial progress bar
     progress_bar = tqdm(
         range(0, args.num_train_epochs * len(dataloader['train'])),
@@ -242,20 +410,26 @@ if __name__ == "__main__":
         desc="Steps",
     )
 
+    logger.info("***** Running training *****")
     # Train the tokenizer
     for epoch in range(first_epoch, args.num_train_epochs):
-        
+
         epoch_loss = 0.0
         for step, batch in enumerate(dataloader['train']):
-            data = torch.tensor(batch['inputs'], dtype=torch.float32).to(args.device)
-            data = tokenizer.revin(data, mode='norm')
+            # Normalize and convert input data to tensor
+            data = torch.stack(
+                [
+                    tokenizer.convert_string_to_tensor(text, is_norm=True)
+                    for text in batch["texts"]
+                ]
+            ).to(args.device)
 
             # Forward pass through VQ model
             outputs = tokenizer.vq_model(data)
             pred = outputs['reconstructed']
 
             # Compute loss
-            recon_loss = F.mse_loss(pred, data)
+            recon_loss = F.l1_loss(pred, data)
             vq_loss = outputs['vq_loss']
             total_loss = recon_loss + vq_loss
 
@@ -269,72 +443,22 @@ if __name__ == "__main__":
             global_step += 1
             epoch_loss += total_loss.item()
 
-        print(f'Epoch {epoch:3d} | Total: {epoch_loss:.4f} | ')
+            # Log every checkpointing_steps
+            if global_step % args.checkpointing_steps == 0:
+                save_checkpoint(args, tokenizer, optimizer, global_step)
 
-            # tokenizer.vq_model.eval()
-            # with torch.no_grad():
-            #     data = torch.tensor(batch['inputs'], dtype=torch.float32).to(args.device)
-            #     data = tokenizer.revin(data, mode='norm')
+            if global_step % args.validation_steps == 0:
+                log_validation(args, tokenizer, dataloader, global_step, writer)
 
-            #     # Forward pass through VQ model
-            #     outputs = tokenizer.vq_model(data)
-            #     pred = outputs['reconstructed']
+        # Log the average loss for the epoch
+        avg_loss = epoch_loss / len(dataloader['train'])
+        logger.info(f'Epoch {epoch:3d} | Total Loss: {epoch_loss:.4f} | Avg Loss: {avg_loss:.4f}')
 
-            #     print("=" * 50)
-            #     print(data[0])
-            #     print(pred[0])
-            #     print("=" * 50)
-            #     print(tokenizer.revin(data, mode='denorm')[0])
-            #     print(tokenizer.revin(pred, mode='denorm')[0])
-            #     print("=" * 50)
-            # tokenizer.vq_model.train()
+        # Report the average loss to
+        writer.add_scalar("train/loss", avg_loss, epoch)
 
-            # # Log every checkpointing_steps
-            # if global_step % args.checkpointing_steps == 0:
-            #     checkpoint_path = Path(args.output_dir) / f"checkpoint-{global_step}"
-            #     checkpoint_path.mkdir(parents=True, exist_ok=True)
-                
-            #     # Save tokenizer and optimizer state
-            #     torch.save(tokenizer.state_dict(), checkpoint_path / "tokenizer.pt")
-            #     torch.save(optimizer.state_dict(), checkpoint_path / "optimizer.pt")
-                
-            #     print(f"Checkpoint saved at {checkpoint_path}")
+    # Final validation
+    log_validation(args, tokenizer, dataloader, global_step, writer)
 
-            # # Delete checkpoint if total checkpoints exceed limit
-            # if args.checkpoints_total_limit is not None:
-            #     checkpoints = sorted(Path(args.output_dir).glob("checkpoint-*"))
-            #     if len(checkpoints) > args.checkpoints_total_limit:
-            #         for removing_checkpoint in checkpoints[:-args.checkpoints_total_limit]:
-            #             shutil.rmtree(removing_checkpoint)
-
-            
-        # for step, batch in enumerate(dataloader['validation']):
-        #     with torch.no_grad():
-        #         if step % 200 != 0: continue
-        #         data = torch.tensor(batch['inputs'], dtype=torch.float32).to(args.device)
-        #         data = tokenizer.revin(data, mode='norm')
-                
-        #         tokens = tokenizer._tokenize(batch['inputs'][0])
-        #         # tokenizer.get_vocab()
-        #         print(f"Tokenized: {tokens}")
-
-        #         # Forward pass through VQ model
-        #         outputs = tokenizer.vq_model(data)
-        #         pred = outputs['reconstructed']
-
-        #         # Print some example outputs
-        #         print("=" * 50)
-        #         print("Input Data:")
-        #         print(data[0])
-
-        #         print("Reconstructed Data:")
-        #         print(pred[0])
-
-        #         print("Input Text:")
-        #         print(tokenizer.revin(data, mode='denorm')[0])
-                
-        #         print("Reconstructed Text:")
-        #         print(tokenizer.revin(pred, mode='denorm')[0])
-        #         print("=" * 50)
-    
-    tokenizer.save_pretrained(args.output_dir)
+    # Save the final model
+    tokenizer.save_pretrained(Path(args.output_dir))
