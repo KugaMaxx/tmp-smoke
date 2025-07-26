@@ -9,6 +9,7 @@ from tqdm.auto import tqdm
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.optim import lr_scheduler
 
 from datasets import load_dataset
 
@@ -90,14 +91,14 @@ def parse_args():
     parser.add_argument(
         "--validation_ids",
         type=str,
-        default=[1383, 1385, 1400],
+        default=[600, 620, 640, 1600, 1620, 1640, 2600, 2620, 2640],
         nargs="*",
         help=("A set of validation data evaluated every `--validation_steps`."),
     )
     parser.add_argument(
         "--validation_steps",
         type=int,
-        default=5000,
+        default=1000,
         help="Run validation every X steps.",
     )
 
@@ -128,7 +129,7 @@ def parse_args():
     parser.add_argument(
         "--checkpointing_steps",
         type=int,
-        default=5000,
+        default=1000,
         help=(
             "Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"
             " training using `--resume_from_checkpoint`."
@@ -166,7 +167,7 @@ def parse_args():
     parser.add_argument(
         "--train_batch_size",
         type=int, 
-        default=128, 
+        default=256, 
         help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument(
@@ -174,11 +175,25 @@ def parse_args():
         type=int, 
         default=300
     )
+
+    # scheduler
     parser.add_argument(
         "--learning_rate",
         type=float,
         default=5e-3,
         help="Initial learning rate (after the potential warmup period) to use.",
+    )
+    parser.add_argument(
+        "--scheduler_step_size",
+        type=int,
+        default=100,
+        help="Period of learning rate decay (in epochs).",
+    )
+    parser.add_argument(
+        "--scheduler_gamma",
+        type=float,
+        default=0.5,
+        help="Multiplicative factor of learning rate decay.",
     )
 
     return parser.parse_args()
@@ -217,7 +232,7 @@ def prepare_dataset(args):
     return dataloader
 
 
-def save_checkpoint(args, tokenizer, optimizer, global_step):
+def save_checkpoint(args, tokenizer, optimizer, scheduler, global_step):
     # Delete checkpoint if total checkpoints exceed limit
     if args.checkpoints_total_limit is not None:
         checkpoints = sorted(Path(args.output_dir).glob("checkpoint-*"), key=lambda x: int(x.stem.split("-")[1]))
@@ -232,6 +247,7 @@ def save_checkpoint(args, tokenizer, optimizer, global_step):
     # Save tokenizer, optimizer and scheduler state
     tokenizer.save_pretrained(checkpoint_path / "vq_tokenizer")
     torch.save(optimizer.state_dict(), checkpoint_path / "optimizer.pt")
+    torch.save(scheduler.state_dict(), checkpoint_path / "scheduler.pt")
 
     # Log the checkpoint saving
     logger.info(f"Checkpoint saved at {checkpoint_path}")
@@ -372,6 +388,9 @@ if __name__ == "__main__":
 
     # Optimizer for the VQ model
     optimizer = optim.Adam(tokenizer.vq_model.parameters(), lr=args.learning_rate)
+    
+    # Learning rate scheduler
+    scheduler = lr_scheduler.StepLR(optimizer, step_size=args.scheduler_step_size, gamma=args.scheduler_gamma)
 
     # Load from checkpoint if specified
     global_step = 0
@@ -383,9 +402,10 @@ if __name__ == "__main__":
             else Path(args.output_dir) / args.resume_from_checkpoint
         )
         
-        # Load tokenizer and optimizer state from checkpoint
+        # Load tokenizer, optimizer and scheduler state from checkpoint
         tokenizer.from_pretrained(checkpoint_path / "vq_tokenizer")
         optimizer.load_state_dict(torch.load(checkpoint_path / "optimizer.pt"))
+        scheduler.load_state_dict(torch.load(checkpoint_path / "scheduler.pt"))
         
         # Resume from checkpoint's global step
         global_step = int(checkpoint_path.name.split("-")[-1])
@@ -436,14 +456,21 @@ if __name__ == "__main__":
 
             # Log every checkpointing_steps
             if global_step % args.checkpointing_steps == 0:
-                save_checkpoint(args, tokenizer, optimizer, global_step)
+                save_checkpoint(args, tokenizer, optimizer, scheduler, global_step)
 
             if global_step % args.validation_steps == 0:
                 log_validation(args, tokenizer, dataloader, global_step, writer)
 
+        # Step the learning rate scheduler at the end of each epoch
+        scheduler.step()
+        
+        # Log the current learning rate
+        current_lr = scheduler.get_last_lr()[0]
+        writer.add_scalar("train/learning_rate", current_lr, epoch)
+        
         # Log the average loss for the epoch
         avg_loss = epoch_loss / len(dataloader['train'])
-        logger.info(f'Epoch {epoch:3d} | Total Loss: {epoch_loss:.4f} | Avg Loss: {avg_loss:.4f}')
+        logger.info(f'Epoch {epoch:3d} | Total Loss: {epoch_loss:.4f} | Avg Loss: {avg_loss:.4f} | LR: {current_lr:.6f}')
 
         # Report the average loss to
         writer.add_scalar("train/loss", avg_loss, epoch)
