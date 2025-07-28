@@ -89,6 +89,7 @@ python3 ./train_vq.py \
   --num_train_epochs=300 \
   --learning_rate=1e-3 \
   --lr_scheduler="constant" \
+  --dataloader_num_workers=4 \
   --trust_remote_code
 ```
 
