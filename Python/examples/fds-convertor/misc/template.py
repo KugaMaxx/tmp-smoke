@@ -12,14 +12,13 @@ from pathlib import Path
 _VERSION = datasets.Version("1.0.0")
 
 _DESCRIPTION = "Dataset for AIoT-based smoke reconstruction."
-_HOMEPAGE = "https://github.com/KugaMaxx/peas-smoke"
-_LICENSE = "MIT LICENSE "
+_HOMEPAGE = "https://github.com/KugaMaxx"
+_LICENSE = "MIT LICENSE"
 _CITATION = "TODO"
 
 _FEATURES = datasets.Features(
     {
         "image": datasets.Image(),
-        "conditioning_image": datasets.Image(),
         "text": datasets.Value("string"),
     },
 )
@@ -47,25 +46,21 @@ class MyDataset(datasets.GeneratorBasedBuilder):
         return [
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
-                # These kwargs will be passed to _generate_examples
                 gen_kwargs={
                     "metadata_path": base_path / "train" / "prompt.jsonl",
                     "images_dir": base_path,
-                    "conditioning_images_dir": base_path,
                 },
             ),
             datasets.SplitGenerator(
                 name=datasets.Split.VALIDATION,
-                # These kwargs will be passed to _generate_examples
                 gen_kwargs={
                     "metadata_path": base_path / "validation" / "prompt.jsonl",
                     "images_dir": base_path,
-                    "conditioning_images_dir": base_path,
                 },
             ),
         ]
 
-    def _generate_examples(self, metadata_path, images_dir, conditioning_images_dir):
+    def _generate_examples(self, metadata_path, images_dir):
         metadata = pd.read_json(metadata_path, lines=True)
 
         for _, row in metadata.iterrows():
@@ -75,20 +70,10 @@ class MyDataset(datasets.GeneratorBasedBuilder):
             image_path = os.path.join(images_dir, image_path)
             image = open(image_path, "rb").read()
 
-            conditioning_image_path = row["conditioning_image"]
-            conditioning_image_path = os.path.join(
-                conditioning_images_dir, row["conditioning_image"]
-            )
-            conditioning_image = open(conditioning_image_path, "rb").read()
-
             yield row["image"], {
                 "text": text,
                 "image": {
                     "path": image_path,
                     "bytes": image,
-                },
-                "conditioning_image": {
-                    "path": conditioning_image_path,
-                    "bytes": conditioning_image,
-                },
+                }
             }

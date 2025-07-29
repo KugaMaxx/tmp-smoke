@@ -111,23 +111,23 @@ def plot3d_to_flipbook(
     # padding images
     images = [image_data[:, :, i] for i in range(NZP)]
 
-    num_images = args.num_row * args.num_col
+    num_images = args.num_rows * args.num_cols
     if len(images) < num_images:
-        # print(f"Warning: num_row * num_col ({args.num_row * args.num_col}) is greater than NZP ({NZP}). "
+        # print(f"Warning: num_rows * num_cols ({args.num_rows * args.num_cols}) is greater than NZP ({NZP}). "
         #       "Will add empty slices to fit.")
         # Add empty slices to fit the required number of images
         images += [np.zeros_like(images[0])] * (num_images - len(images))
 
     elif len(images) > num_images:
-        # print(f"Warning: num_row * num_col ({args.num_row * args.num_col}) is less than NZP ({NZP}). "
+        # print(f"Warning: num_rows * num_cols ({args.num_rows * args.num_cols}) is less than NZP ({NZP}). "
         #       "Will delete some slices to fit.")
         # Truncate the list to fit the required number of images
         images = images[:num_images]
 
     # convert to flipbook image
     rows = []
-    for i in range(0, num_images, args.num_row):
-        row = np.hstack(images[i:i + args.num_row])
+    for i in range(0, num_images, args.num_rows):
+        row = np.hstack(images[i:i + args.num_rows])
         rows.append(row)
 
     return np.vstack(rows)
@@ -218,14 +218,14 @@ def process_cases_parallel(args, cases, output_path, split_type):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Convert FDS data to LoRa format.')
     parser.add_argument(
-        "--fds_data_path",
+        "--input_fds_dir",
         default=None,
         type=str,
         required=True,
         help="Path to the FDS simulation data directory containing train and validation subfolders."
     )
     parser.add_argument(
-        "--texture_data_path",
+        "--output_dataset_dir",
         default=None,
         type=str,
         required=True,
@@ -278,13 +278,13 @@ if __name__ == '__main__':
 
     # flipbook parameters
     parser.add_argument(
-        "--num_row",
+        "--num_rows",
         default=2,
         type=int,
         help="Number of x-axis slice data in the flipbook.",
     )
     parser.add_argument(
-        "--num_col",
+        "--num_cols",
         default=15,
         type=int,
         help="Number of y-axis slice data in the flipbook.",
@@ -310,34 +310,34 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # fds simulation data directory
-    args.fds_data_path = Path(args.fds_data_path)
+    args.input_fds_dir = Path(args.input_fds_dir)
 
     # create output directory
-    args.texture_data_path = Path(args.texture_data_path)
-    args.texture_data_path.mkdir(parents=True, exist_ok=True)
+    args.output_dataset_dir = Path(args.output_dataset_dir)
+    args.output_dataset_dir.mkdir(parents=True, exist_ok=True)
 
     # create train subfolder
-    texture_data_train_path = args.texture_data_path / 'train'
-    texture_data_train_path.mkdir(parents=True, exist_ok=True)
-    texture_data_validation_path = args.texture_data_path / 'validation'
-    texture_data_validation_path.mkdir(parents=True, exist_ok=True)
+    dataset_train_path = args.output_dataset_dir / 'train'
+    dataset_train_path.mkdir(parents=True, exist_ok=True)
+    dataset_validation_path = args.output_dataset_dir / 'validation'
+    dataset_validation_path.mkdir(parents=True, exist_ok=True)
 
     # make train subfolder
     print("Making train subfolder...")
-    train_cases = list(sorted((args.fds_data_path / 'train').glob('*')))
-    train_captions = process_cases_parallel(args, train_cases, texture_data_train_path, 'train')
+    train_cases = list(sorted((args.input_fds_dir / 'train').glob('*')))
+    train_captions = process_cases_parallel(args, train_cases, dataset_train_path, 'train')
 
-    with open(f"{texture_data_train_path / 'prompt.jsonl'}", 'w') as f:
+    with open(f"{dataset_train_path / 'prompt.jsonl'}", 'w') as f:
         for caption in train_captions:
             json.dump(caption, f)
             f.write("\n")
 
     # make validation subfolder
     print("Making validation subfolder...")
-    validation_cases = list(sorted((args.fds_data_path / 'validation').glob('*')))
-    validation_captions = process_cases_parallel(args, validation_cases, texture_data_validation_path, 'validation')
+    validation_cases = list(sorted((args.input_fds_dir / 'validation').glob('*')))
+    validation_captions = process_cases_parallel(args, validation_cases, dataset_validation_path, 'validation')
 
-    with open(f"{texture_data_validation_path / 'prompt.jsonl'}", 'w') as f:
+    with open(f"{dataset_validation_path / 'prompt.jsonl'}", 'w') as f:
         for caption in validation_captions:
             json.dump(caption, f)
             f.write("\n")
@@ -345,4 +345,4 @@ if __name__ == '__main__':
     # generate huggingface dataset format
     os.system("cp "
               f"{str((Path(__file__).parent / 'misc' / 'template.py').resolve())} "
-              f"{str(args.texture_data_path / (str(args.texture_data_path.stem) + '.py'))}")
+              f"{str(args.output_dataset_dir / (str(args.output_dataset_dir.stem) + '.py'))}")
