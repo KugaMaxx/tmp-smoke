@@ -1,3 +1,17 @@
+#!/usr/bin/env python
+# This script is the VQ-VAE (Vector Quantized Variational Autoencoder) published 
+# in the paper:
+#
+#   https://arxiv.org/abs/1711.00937
+#
+# We use its EMA variant to get avoid of 'dead codes'. The reference code is 
+# available at:
+#
+#   https://github.com/zalandoresearch/pytorch-vq-vae
+#
+# Also, we use PretrainedModel and PretrainedConfig from HuggingFace Transformers
+# library to make it can be loaded and saved more easily.
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,17 +21,25 @@ from transformers.modeling_utils import PreTrainedModel, PretrainedConfig
 
 class VectorQuantizer(nn.Module):
     """Vector Quantization layer for VQ-VAE"""
-    
-    def __init__(self, num_embeddings: int, embedding_dim: int, commitment_cost: float = 0.25):
+
+    def __init__(self, num_embeddings: int, embedding_dim: int, commitment_cost: float = 0.25, ema_decay: float = 0.99):
         super().__init__()
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
         self.commitment_cost = commitment_cost
-        
+
         # Initialize embedding table
         self.embedding = nn.Embedding(num_embeddings, embedding_dim)
-        self.embedding.weight.data.uniform_(-1/num_embeddings, 1/num_embeddings)
-        
+        self.embedding.weight.data.normal_()
+        # self.embedding.weight.data.uniform_(-1/num_embeddings, 1/num_embeddings)
+
+        # EMA parameters
+        self.ema_decay = ema_decay
+        self.register_buffer('ema_cluster_size', torch.zeros(num_embeddings))
+        self.register_buffer('ema_w', torch.zeros(num_embeddings, embedding_dim))
+        # self.ema_w.data.copy_(self.embedding.weight.data)
+        self.ema_w.data.normal_()
+
     def forward(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Args:
@@ -43,7 +65,24 @@ class VectorQuantizer(nn.Module):
         encoding_indices = torch.argmin(distances, dim=1).unsqueeze(1)
         encodings = torch.zeros(encoding_indices.shape[0], self.num_embeddings, device=inputs.device)
         encodings.scatter_(1, encoding_indices, 1)
-        
+
+        # Use EMA to update the embedding vectors
+        if self.training:
+            with torch.no_grad():
+                # Update EMA cluster size
+                self.ema_cluster_size = self.ema_cluster_size * self.ema_decay + \
+                                    (1 - self.ema_decay) * torch.sum(encodings, 0)
+
+                # Update EMA weights
+                dw = torch.matmul(encodings.t(), flat_input)
+                self.ema_w = self.ema_w * self.ema_decay + (1 - self.ema_decay) * dw
+
+                # Normalize and update embedding weights
+                n = torch.sum(self.ema_cluster_size)
+                self.ema_cluster_size = (self.ema_cluster_size + 1e-5) / (n + self.num_embeddings * 1e-5) * n
+
+                self.embedding.weight = nn.Parameter(self.ema_w / self.ema_cluster_size.unsqueeze(1))
+
         # Quantize and unflatten
         quantized = torch.matmul(encodings, self.embedding.weight).view(input_shape)
         
@@ -152,6 +191,7 @@ class VQConfig(PretrainedConfig):
         latent_dim: int = 64,
         num_embeddings: int = 512,
         commitment_cost: float = 0.25,
+        ema_decay: float = 0.99,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -162,6 +202,7 @@ class VQConfig(PretrainedConfig):
         self.latent_dim = latent_dim
         self.num_embeddings = num_embeddings
         self.commitment_cost = commitment_cost
+        self.ema_decay = ema_decay
 
 
 class VQModel(PreTrainedModel):
@@ -180,13 +221,14 @@ class VQModel(PreTrainedModel):
         self.latent_dim = config.latent_dim
         self.num_embeddings = config.num_embeddings
         self.commitment_cost = config.commitment_cost
+        self.ema_decay = config.ema_decay
         
         # Build encoder and decoder
         self.encoder = Encoder1D(self.in_channels, self.hidden_dims, self.latent_dim)
         self.decoder = Decoder1D(self.latent_dim, self.hidden_dims, self.out_channels)
         
         # Vector quantizer
-        self.vq_layer = VectorQuantizer(self.num_embeddings, self.latent_dim, self.commitment_cost)
+        self.vq_layer = VectorQuantizer(self.num_embeddings, self.latent_dim, self.commitment_cost, self.ema_decay)
         
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         """Encode input to latent space"""
@@ -218,10 +260,15 @@ class VQModel(PreTrainedModel):
         
         # Decode
         reconstructed = self.decode(quantized)
+
+        # Reconstruction loss
+        recon_loss = F.mse_loss(reconstructed, x)
         
         return {
             'reconstructed': reconstructed,
             'vq_loss': vq_loss,
+            'recon_loss': recon_loss,
+            'loss': vq_loss + recon_loss,
             'perplexity': perplexity,
             'encoded': encoded,
             'quantized': quantized

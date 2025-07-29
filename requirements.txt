@@ -1,9 +1,9 @@
 accelerate
 datasets
 diffusers
+tqdm
 # ftfy
 # Jinja2
 # peft==0.7.0
 transformers
-# tensorboard
-faiss-cpu
+tensorboard

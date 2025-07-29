@@ -7,8 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from tokenizers import AddedToken
-from transformers.tokenization_utils import PreTrainedTokenizer
-from diffusers.configuration_utils import FrozenDict
+from transformers import PreTrainedTokenizer
 
 from ..models import VQConfig, VQModel
 
@@ -84,6 +83,8 @@ class VQTokenizer(PreTrainedTokenizer):
         vq_config: Optional[Union[Dict[str, Any], VQConfig]] = None,
         vq_model: VQModel = None,
         errors="replace",
+        model_max_length=77,
+        base_vocab_size=49406,
         unk_token="<|endoftext|>",
         bos_token="<|startoftext|>",
         eos_token="<|endoftext|>",
@@ -93,6 +94,8 @@ class VQTokenizer(PreTrainedTokenizer):
         bos_token = AddedToken(bos_token, lstrip=False, rstrip=False) if isinstance(bos_token, str) else bos_token
         eos_token = AddedToken(eos_token, lstrip=False, rstrip=False) if isinstance(eos_token, str) else eos_token
         unk_token = AddedToken(unk_token, lstrip=False, rstrip=False) if isinstance(unk_token, str) else unk_token
+        
+        self.base_vocab_size = base_vocab_size
 
         if vq_model is None:
             # If no vq_config is provided, use the default VQConfig
@@ -127,6 +130,8 @@ class VQTokenizer(PreTrainedTokenizer):
             bos_token=bos_token,
             eos_token=eos_token,
             pad_token=pad_token,
+            base_vocab_size=base_vocab_size,
+            model_max_length=model_max_length,
             **kwargs,
         )
 
@@ -139,20 +144,26 @@ class VQTokenizer(PreTrainedTokenizer):
         """
         Load a tokenizer from a pretrained model.
         """
+        # Check if the path is a directory or a model identifier
+        if kwargs['subfolder'] is not None:
+            tokenizer_dir = os.path.join(pretrained_model_name_or_path, kwargs['subfolder'])
+        else:
+            tokenizer_dir = pretrained_model_name_or_path
+
         # Load VQ model and config
-        vq_save_directory = os.path.join(pretrained_model_name_or_path, "vq")
+        vq_save_directory = os.path.join(tokenizer_dir, "vq_model")
         if os.path.exists(vq_save_directory):
             kwargs["vq_model"] = VQModel.from_pretrained(vq_save_directory)
             kwargs["vq_config"] = VQConfig.from_pretrained(vq_save_directory)
         else:
-            raise ValueError(f"Subfolder 'vq' does not exist in {pretrained_model_name_or_path}.")
+            raise ValueError(f"Subfolder 'vq_model' does not exist in {tokenizer_dir}.")
         
         # Call the parent's from_pretrained method to handle the tokenizer loading
         tokenizer = super().from_pretrained(pretrained_model_name_or_path, **kwargs)
         
         return tokenizer
 
-    def save_pretrained(self, save_directory: Union[FrozenDict, Dict[str, Any]], **kwargs):
+    def save_pretrained(self, save_directory: Union[str, os.PathLike], **kwargs):
         """
         Save the tokenizer and VQ model to a directory.
         """
@@ -160,7 +171,7 @@ class VQTokenizer(PreTrainedTokenizer):
         super().save_pretrained(save_directory, **kwargs)
 
         # Create sub-directory for VQ model
-        vq_save_directory = os.path.join(save_directory, "vq")
+        vq_save_directory = os.path.join(save_directory, "vq_model")
         os.makedirs(vq_save_directory, exist_ok=True)
         
         # Save VQ model
@@ -203,11 +214,15 @@ class VQTokenizer(PreTrainedTokenizer):
         else:
             raise ValueError("Input must be a string or 2d list.")
 
-        # Set RevIN for input normalization
-        revin = RevIN(len(text[0]), eps=1e-5, affine=False)
+        if is_norm:
+            if not hasattr(self, 'mean') or not hasattr(self, 'std'):
+                # Set RevIN for input normalization
+                revin = RevIN(len(text[0]), eps=1e-5, affine=False)
+                inputs = revin(inputs, mode='norm')
 
-        # Normalize inputs
-        inputs = revin(inputs, mode='norm') if is_norm else inputs
+            else:
+                # Normalize using stored mean and std
+                inputs = (inputs - self.mean) / (self.std + 1e-5)
 
         return inputs
 
@@ -218,9 +233,15 @@ class VQTokenizer(PreTrainedTokenizer):
         # Convert input string or list to tensor
         inputs = self.convert_string_to_tensor(text, is_norm=False)
 
-        # Normalize inputs
-        revin = RevIN(len(inputs[0]), eps=1e-5, affine=False)
-        inputs = revin(inputs, mode='norm')
+        # Normalize for model input
+        if not hasattr(self, 'mean') or not hasattr(self, 'std'):
+            # Set RevIN for input normalization
+            revin = RevIN(len(text[0]), eps=1e-5, affine=False)
+            inputs = revin(inputs, mode='norm')
+
+        else:
+            # Normalize using stored mean and std
+            inputs = (inputs - self.mean) / (self.std + 1e-5)
 
         # Unsqueeze to add batch dimension
         inputs = inputs.unsqueeze(0).to(self.vq_model.device)
@@ -230,23 +251,27 @@ class VQTokenizer(PreTrainedTokenizer):
             outputs = self.vq_model(inputs)
             pred = outputs['reconstructed'].squeeze().cpu()
 
-        # Denormalize the output if normalization was applied
-        pred = revin(pred, mode='denorm') if not is_norm else pred
+        # Denormalize if required
+        if not is_norm:
+            if not hasattr(self, 'mean') or not hasattr(self, 'std'):
+                # Set RevIN for input denormalization
+                pred = revin(pred, mode='denorm')
+
+            else:
+                # Normalize using stored mean and std
+                pred = (pred * self.std) + self.mean
 
         return pred
 
     @property
     def vocab_size(self):
         """Return the vocabulary size of the VQ model plus special tokens."""
-        base_vocab_size = getattr(self.vq_model, 'num_embeddings')
-        # Add space for special tokens
-        return base_vocab_size + len(self.added_tokens_encoder)
+        return self.base_vocab_size + len(self.added_tokens_encoder)
 
     def get_vocab(self):
         """Return the vocabulary as a dictionary."""
         # Base VQ tokens
-        base_vocab_size = getattr(self.vq_model, 'num_embeddings')
-        vocab = {str(i): i for i in range(base_vocab_size)}
+        vocab = {str(i): i for i in range(self.base_vocab_size)}
             
         return vocab
 
