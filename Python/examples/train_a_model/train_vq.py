@@ -45,7 +45,7 @@ def parse_args():
     )
     parser.add_argument(
         "--trust_remote_code",
-        action="store_false",
+        action="store_true",
         help="PWhether to trust the execution of code from datasets/models defined on the Huggingface.",
     )
 
