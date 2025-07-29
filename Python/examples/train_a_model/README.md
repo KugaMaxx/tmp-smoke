@@ -1,5 +1,8 @@
 # Train your own Model
 
+This is a guide to train your own Stable Diffusion model for generating 2D smoke
+ texture images from time-series sensor data.
+
 ## Preliminaries
 
 ### Installing the dependencies
@@ -67,18 +70,31 @@ TODO: 准备一个小型的 cube 数据集，大小控制在 500M 左右
 
 ## Running step by step
 
-TODO: 从hugging face上拉取一个包含了tokenizer和clip的模型，然后在那个基础上训练
+TODO: 从hugging face上拉取一个包含了tokenizer和clip的diffusion模型，然后在那个基础上训练，
+这个模型是几个预训练模型拼凑起来的
+
+<!-- First of first, download the pretrained model:
 
 ```bash
-export MODEL_NAME="KugaMaxx/lychee-smore"
+python3 ./create_pretrained.py \
+  --pretrained_model_name_or_path="stable-diffusion-v1-5/stable-diffusion-v1-5" \
+  --output_dir="./3d-smoke-sd-wo-training"
+```
+
+Train a model without pretrained model is not recommended, as it will cause
+ model collapse. -->
+
+```bash
+export MODEL_NAME="3d-smoke-sd/3d-smoke-sd-wo-training"
 export DATASET_NAME="KugaMaxx/cube-demo"
-export OUTPUT_DIR="./TODO"
+export OUTPUT_DIR="./3d-smoke-sd"
 ```
 
 ### Step 1. Train a VQ tokenizer
 
-The VQ tokenizer is designed to handle long time-series data and can compress it
- into a sequence of discrete tokens. It needs to be trained before using:
+The VQ tokenizer is designed to tokenize long time-series sensor data and its
+ thought is derived from [TOTEM](https://github.com/SaberaTalukder/TOTEM).
+ It needs to be trained before using:
 
 ```bash
 python3 ./train_vq.py \
@@ -86,31 +102,32 @@ python3 ./train_vq.py \
   --dataset_name=$DATASET_NAME \
   --output_dir=$OUTPUT_DIR \
   --train_batch_size=128 \
-  --num_train_epochs=300 \
-  --learning_rate=1e-3 \
+  --num_train_epochs=150 \
+  --learning_rate=1e-5 \
   --lr_scheduler="constant" \
   --dataloader_num_workers=4 \
+  --validation_ids=[500, 1500, 2500] \
   --trust_remote_code
 ```
 
-This thought is derived from 
-[TOTEM](https://github.com/SaberaTalukder/TOTEM) and we wrapped it as the
- [Tokenizer](https://huggingface.co/docs/transformers/en/main_classes/tokenizer).
-
 ### Step 2. Train a CLIP model
 
-The [CLIP Model](https://github.com/openai/CLIP) needs to be retrained to align
+The [CLIP Model](https://github.com/openai/CLIP) needs to be finetuned to align
  with the VQ tokenizer and the dataset:
 
 ```bash
 python3 ./train_clip.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
+  --tokenizer_name_or_path=$OUTPUT_DIR \
   --dataset_name=$DATASET_NAME \
   --output_dir=$OUTPUT_DIR \
-  --train_batch_size=64 \
-  --num_train_epochs=100 \
-  --learning_rate=1e-4 \
+  --train_batch_size=128 \
+  --num_train_epochs=30 \
+  --learning_rate=5e-5 \
   --lr_scheduler="constant" \
+  --dataloader_num_workers=4 \
+  --freeze_vision_model \
+  --validation_ids=[500, 1500, 2500] \
   --trust_remote_code
 ```
 
