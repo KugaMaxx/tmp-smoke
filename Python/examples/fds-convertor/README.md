@@ -104,7 +104,9 @@ Now that you have all FDS files ready, you need to run each of them to generate 
 
 ```bash
 # This process can take a long time
-fds <your_fds_file>.fds
+bash run_fds.sh <one_case_fds_dir>
+# For example:
+# bash run_fds.sh <your_expand_fds_dir>/train/<case_1>_h1000
 ```
 
 因此，你的 fds 文件夹最后构成如下：
