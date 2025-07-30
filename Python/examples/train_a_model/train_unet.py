@@ -176,7 +176,7 @@ def parse_args():
     parser.add_argument(
         "--validation_ids",
         type=str,
-        default=[500, 1500, 2500],
+        default=None,
         nargs="*",
         help=("A set of validation data evaluated every `--validation_steps`."),
     )
@@ -359,7 +359,7 @@ def parse_args():
     )
     parser.add_argument(
         "--use_8bit_adam", 
-        action="store_true", 
+        action="store_true",
         help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
     parser.add_argument(
@@ -372,7 +372,7 @@ def parse_args():
     )
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", 
-        action="store_false", 
+        action="store_true",
         help="Whether or not to use xformers."
     )
 
@@ -592,17 +592,15 @@ def log_validation(args, pipeline, accelerator, dataloader, global_step, is_fina
 
     # Log validation information
     for id, batch in enumerate(dataloader['validation']):
-        if id not in args.validation_ids: 
-            continue
-        
-        if id >= max(args.validation_ids): 
+        if id > max(args.validation_ids): 
             break
 
-        prompt_embeds = pipeline.text_encoder(batch["input_ids"])
-        
-        autocast_ctx = contextlib.nullcontext() if is_final_validation else torch.autocast(accelerator.device.type)
+        if id not in args.validation_ids: 
+            continue
 
-        with autocast_ctx:
+        prompt_embeds = pipeline.text_encoder(batch["input_ids"])[0]
+
+        with torch.autocast(accelerator.device.type):
             validation_result = pipeline(
                 prompt_embeds=prompt_embeds, num_inference_steps=20, generator=generator, height=args.resolution, width=args.resolution
             ).images[0]
@@ -610,14 +608,14 @@ def log_validation(args, pipeline, accelerator, dataloader, global_step, is_fina
         for tracker in accelerator.trackers:
             if tracker.name == "tensorboard":
                 # Log to tensorboard
-                tracker.writer.add_figure(f'validation/data_{id}', validation_result, global_step, dataformats="NHWC")
+                tracker.writer.add_images(f'validation/recon_{id}', np.array(validation_result), global_step, dataformats="HWC")
             else:
                 logger.warning(f"image logging not implemented for {tracker.name}")
 
 
 if __name__ == "__main__":
     args = parse_args()
-    
+
     # Make one log on every process with the configuration for debugging.
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     logging.basicConfig(
@@ -650,7 +648,7 @@ if __name__ == "__main__":
         args.pretrained_model_name_or_path, subfolder="scheduler"
     )
 
-    # Initialize finetuned text encoder and tokenizer 
+    # Initialize finetuned text encoder and tokenizer
     tokenizer = VQTokenizer.from_pretrained(
         args.tokenizer_name_or_path, subfolder="tokenizer", revision=args.revision
     )
@@ -670,7 +668,7 @@ if __name__ == "__main__":
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
-    
+
     # Move text_encode and vae to gpu and cast to weight_dtype
     vae.to(accelerator.device, dtype=weight_dtype)
     text_encoder.to(accelerator.device, dtype=weight_dtype)
@@ -705,7 +703,7 @@ if __name__ == "__main__":
 
     # Initialize dataloader
     dataloader = prepare_dataset(args, tokenizer, accelerator)
-    
+
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(dataloader['train']) / args.gradient_accumulation_steps)
@@ -864,28 +862,25 @@ if __name__ == "__main__":
                 accelerator.log({"train_loss": train_loss}, step=global_step)
                 train_loss = 0.0
 
-                if accelerator.is_main_process:
-                    # Save checkpoint
-                    if global_step % args.checkpointing_steps == 0:
-                        save_checkpoint(args, accelerator, global_step)
+            if accelerator.is_main_process:
+                # Save checkpoint
+                if global_step % args.checkpointing_steps == 0:
+                    save_checkpoint(args, accelerator, global_step)
 
-                    # Run validation
-                    if global_step % args.validation_steps == 0:
-                        pipeline = StableDiffusionPipeline.from_pretrained(
-                            args.pretrained_model_name_or_path,
-                            vae=vae,
-                            text_encoder=text_encoder,
-                            tokenizer=tokenizer,
-                            unet=accelerator.unwrap_model(unet),
-                            safety_checker=None,
-                            revision=args.revision,
-                            variant=args.variant,
-                            torch_dtype=weight_dtype
-                        )
-                        log_validation(args, pipeline, accelerator, dataloader, global_step)
-
-                        del pipeline
-                        torch.cuda.empty_cache()
+                # Run validation
+                if global_step % args.validation_steps == 0:
+                    pipeline = StableDiffusionPipeline.from_pretrained(
+                        args.pretrained_model_name_or_path,
+                        vae=vae,
+                        text_encoder=text_encoder,
+                        tokenizer=tokenizer,
+                        unet=accelerator.unwrap_model(unet),
+                        safety_checker=None,
+                        revision=args.revision,
+                        variant=args.variant,
+                        torch_dtype=weight_dtype
+                    )
+                    log_validation(args, pipeline, accelerator, dataloader, global_step)
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -896,6 +891,7 @@ if __name__ == "__main__":
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
+        # Create the pipeline with the trained UNet, VAE, and text encoder
         pipeline = StableDiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             tokenizer=tokenizer,
@@ -907,19 +903,15 @@ if __name__ == "__main__":
             variant=args.variant,
             torch_dtype=weight_dtype,
         )
-        pipeline.save_pretrained(args.output_dir)
+
+        # Save only the unet and other components, exclude tokenizer and text_encoder
+        pipeline.save_config(args.output_dir)
+        pipeline.unet.save_pretrained(os.path.join(args.output_dir, "unet"))
+        pipeline.vae.save_pretrained(os.path.join(args.output_dir, "vae"))
+        pipeline.scheduler.save_pretrained(os.path.join(args.output_dir, "scheduler"))
+        pipeline.feature_extractor.save_pretrained(os.path.join(args.output_dir, "feature_extractor"))
 
         # Run a final round of validation.
-        log_validation(
-            args=args,
-            tokenizer=tokenizer,
-            text_encoder=text_encoder,
-            vae=vae,
-            unet=unet,
-            accelerator=accelerator,
-            weight_dtype=weight_dtype,
-            step=global_step,
-            is_final_validation=True
-        )
+        log_validation(args, pipeline, accelerator, dataloader, global_step, is_final_validation=True)
 
     accelerator.end_training()

@@ -411,11 +411,11 @@ def log_validation(args, model, dataloader, global_step, writer):
 
         # Log validation information
         for id, batch in enumerate(dataloader['validation']):
+            if id > max(args.validation_ids): 
+                break
+            
             if id not in args.validation_ids: 
                 continue
-            
-            if id >= max(args.validation_ids): 
-                break
 
             validation_batch["input_ids"].append(batch['input_ids'][0])
             validation_batch["pixel_values"].append(batch['pixel_values'][0])

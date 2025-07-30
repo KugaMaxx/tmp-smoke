@@ -317,11 +317,11 @@ def log_validation(args, tokenizer, dataloader, global_step, writer):
         
         # Log validation information
         for id, batch in enumerate(dataloader['validation']):
+            if id > max(args.validation_ids): 
+                break
+            
             if id not in args.validation_ids: 
                 continue
-            
-            if id >= max(args.validation_ids): 
-                break
 
             # Log the tokens
             logger.info(f"  Tokens: {tokenizer(batch["texts"])}")
