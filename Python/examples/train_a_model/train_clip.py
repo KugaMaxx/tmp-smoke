@@ -48,8 +48,8 @@ def parse_args():
         default=None,
         required=True,
         help=(
-            "Path to pretrained model or model identifier from huggingface.co/models."
-            " Please make sure that the tokenizer is finetuned on the same dataset in advance."
+            "Path to pretrained tokenizer or identifier from huggingface.co/models. "
+            "Please make sure that the tokenizer is finetuned on the same dataset in advance."
         ),
     )
     parser.add_argument(
@@ -270,14 +270,14 @@ def prepare_dataset(args, tokenizer):
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
-            trust_remote_code=True
+            trust_remote_code=args.trust_remote_code
         )
     elif args.dataset_dir is not None:
         dataset = load_dataset(
             args.dataset_dir,
             data_dir=args.dataset_dir,
             cache_dir=args.cache_dir,
-            trust_remote_code=True
+            trust_remote_code=args.trust_remote_code
         )
 
     # Check if the dataset has the required columns

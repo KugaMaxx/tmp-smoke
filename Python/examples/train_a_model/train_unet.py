@@ -44,7 +44,7 @@ from diffusers.utils.import_utils import is_xformers_available, is_wandb_availab
 
 # transforms
 import transformers
-from transformers import CLIPTextModel, CLIPTokenizer, CLIPModel
+from transformers import CLIPTextModel
 
 from lychee_smore import VQTokenizer
 
@@ -59,9 +59,31 @@ def parse_args():
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
-        default="stable-diffusion-v1-5/stable-diffusion-v1-5",
+        default=None,
+        required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
+    parser.add_argument(
+        "--tokenizer_name_or_path",
+        type=str,
+        default=None,
+        required=True,
+        help=(
+            "Path to pretrained tokenizer or identifier from huggingface.co/models. "
+            "Please make sure that the tokenizer is finetuned on the same dataset in advance."
+        ),
+    )
+    parser.add_argument(
+        "--text_encoder_name_or_path",
+        type=str,
+        default=None,
+        required=True,
+        help=(
+            "Path to pretrained text encoder or identifier from huggingface.co/models. "
+            "Please make sure that the tokenizer is finetuned on the same dataset in advance."
+        ),
+    )
+
     parser.add_argument(
         "--revision",
         type=str,
@@ -73,6 +95,11 @@ def parse_args():
         type=str,
         default=None,
         help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
+    )
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help="PWhether to trust the execution of code from datasets/models defined on the Huggingface.",
     )
 
     # dataset
@@ -89,7 +116,7 @@ def parse_args():
     parser.add_argument(
         "--dataset_dir",
         type=str,
-        default="/root/autodl-tmp/corridor-texture",
+        default=None,
         help=(
             "A folder containing the training data. Folder contents must follow the structure described in"
             " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
@@ -133,7 +160,6 @@ def parse_args():
     )
     parser.add_argument(
         "--center_crop",
-        default=False,
         action="store_true",
         help=(
             "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
@@ -157,7 +183,7 @@ def parse_args():
     parser.add_argument(
         "--validation_steps",
         type=int,
-        default=100,
+        default=None,
         help="Run validation every X steps.",
     )
 
@@ -165,13 +191,13 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="/root/autodl-tmp/output",
+        default="./output",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
         "--cache_dir",
         type=str,
-        default="/root/autodl-tmp/cache",
+        default=None,
         help="The directory where the downloaded models and datasets will be stored.",
     )
     parser.add_argument(
@@ -186,7 +212,7 @@ def parse_args():
     parser.add_argument(
         "--checkpointing_steps",
         type=int,
-        default=500,
+        default=None,
         help=(
             "Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"
             " training using `--resume_from_checkpoint`."
@@ -251,12 +277,6 @@ def parse_args():
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
     parser.add_argument(
-        "--noise_offset", 
-        type=float, 
-        default=0.1, 
-        help="Noise offset coefficient for training stability and better dark/bright image generation."
-    )
-    parser.add_argument(
         "--gradient_accumulation_steps",
         type=int,
         default=1,
@@ -274,6 +294,14 @@ def parse_args():
         help=(
             "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
         ),
+    )
+
+    # noise scheduler
+    parser.add_argument(
+        "--noise_offset", 
+        type=float, 
+        default=0.1, 
+        help="Noise offset coefficient for training stability and better dark/bright image generation."
     )
     parser.add_argument(
         "--prediction_type",
@@ -299,7 +327,6 @@ def parse_args():
     parser.add_argument(
         "--scale_lr",
         action="store_true",
-        default=False,
         help="Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.",
     )
     parser.add_argument(
@@ -439,15 +466,14 @@ def prepare_dataset(args, tokenizer, accelerator):
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
-            data_dir=args.dataset_dir,
-            trust_remote_code=True
+            trust_remote_code=args.trust_remote_code
         )
     elif args.dataset_dir is not None:
         dataset = load_dataset(
             args.dataset_dir,
             data_dir=args.dataset_dir,
             cache_dir=args.cache_dir,
-            trust_remote_code=True
+            trust_remote_code=args.trust_remote_code
         )
 
     # Check column
@@ -620,16 +646,16 @@ if __name__ == "__main__":
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
-
-    # Initialize finetuned text encoder and tokenizer 
-    text_encoder = CLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
-    )
-    tokenizer = VQTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
-    )
     noise_scheduler = DDPMScheduler.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="scheduler"
+    )
+
+    # Initialize finetuned text encoder and tokenizer 
+    tokenizer = VQTokenizer.from_pretrained(
+        args.tokenizer_name_or_path, subfolder="tokenizer", revision=args.revision
+    )
+    text_encoder = CLIPTextModel.from_pretrained(
+        args.text_encoder_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
 
     # Freeze vae and text_encoder and set unet to trainable
@@ -675,9 +701,7 @@ if __name__ == "__main__":
 
     # Scale the learning rate if specified
     if args.scale_lr:
-        args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
-        )
+        args.learning_rate *= args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
 
     # Initialize dataloader
     dataloader = prepare_dataset(args, tokenizer, accelerator)
@@ -705,8 +729,10 @@ if __name__ == "__main__":
     )
 
     # Prepare everything with our `accelerator`.
-    unet, optimizer, dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, dataloader, lr_scheduler
+    unet, optimizer, lr_scheduler, dataloader["train"], dataloader["validation"] = (
+        accelerator.prepare(
+            unet, optimizer, lr_scheduler, dataloader["train"], dataloader["validation"]
+        )
     )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -715,13 +741,12 @@ if __name__ == "__main__":
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
-        
+
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
-        tracker_config.pop("validation_prompts")
-        tracker_config.pop("validation_images")
+        tracker_config.pop("validation_ids")
         accelerator.init_trackers(args.tracker_project_name, tracker_config)
 
     # Train!
@@ -858,7 +883,7 @@ if __name__ == "__main__":
                             torch_dtype=weight_dtype
                         )
                         log_validation(args, pipeline, accelerator, dataloader, global_step)
-                        
+
                         del pipeline
                         torch.cuda.empty_cache()
 
