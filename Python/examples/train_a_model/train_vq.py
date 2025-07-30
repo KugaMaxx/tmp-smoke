@@ -1,3 +1,13 @@
+#!/usr/bin/env python
+#
+# This script is used to train a VQ Tokenizer using a dataset of images and
+# captions. The original thought is derived from the TOTEM:
+# 
+#   https://github.com/SaberaTalukder/TOTEM
+#
+# We adjust it as the subclass of PretrainedTokenizer to make it compatible with
+# the Hugging Face Transformers library.
+
 import math
 import shutil
 import argparse
@@ -249,12 +259,13 @@ def prepare_dataset(args):
             f"needs to be one of: {', '.join(dataset['validation'].column_names)}"
         )
 
-    # build the dataloader
+    # Build the dataloader
     def collate_fn(batch): 
         return {
             "texts": [item[args.caption_column] for item in batch]
         }
 
+    # DataLoaders creation
     dataloader = {}
     for dataset_part in dataset.keys():
         dataloader[dataset_part] = torch.utils.data.DataLoader(
@@ -306,7 +317,11 @@ def log_validation(args, tokenizer, dataloader, global_step, writer):
         
         # Log validation information
         for id, batch in enumerate(dataloader['validation']):
-            if id not in args.validation_ids: continue
+            if id not in args.validation_ids: 
+                continue
+            
+            if id >= max(args.validation_ids): 
+                break
 
             # Log the tokens
             logger.info(f"  Tokens: {tokenizer(batch["texts"])}")
@@ -462,8 +477,8 @@ if __name__ == "__main__":
         desc="Steps",
     )
 
+    # Train!
     logger.info("============ Training Begins ============")
-    # Train the tokenizer
     for epoch in range(first_epoch, args.num_train_epochs):
         
         # Initialize statistics

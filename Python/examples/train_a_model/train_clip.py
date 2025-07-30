@@ -1,3 +1,12 @@
+#!/usr/bin/env python
+# 
+# This script is used to train a CLIP model with a VQ tokenizer. The code
+# is inspired by the Hugging Face example for training CLIP models:
+#
+#   https://github.com/huggingface/transformers/tree/main/examples/pytorch/contrastive-image-text/run_clip.py
+#
+# Dual encoder models using text (BERT) and vision (ViT) encoders in the library.s
+
 import shutil
 import argparse
 import datetime
@@ -296,7 +305,7 @@ def prepare_dataset(args, tokenizer):
 
     # Transform the dataset
     def preprocess(examples):
-        # preprocess the images
+        # Preprocess the images
         image_transforms = transforms.Compose(
             [
                 transforms.Resize((args.resolution, args.resolution), interpolation=transforms.InterpolationMode.LANCZOS),
@@ -306,15 +315,14 @@ def prepare_dataset(args, tokenizer):
                 transforms.Normalize([0.5], [0.5]),
             ]
         )
-
         images = [image.convert("RGB") for image in examples[args.image_column]]
         images = [image_transforms(image) for image in images]
 
         examples["pixel_values"] = images
 
-        # preprocess the captions
+        # Preprocess the captions
         captions = list(examples[args.caption_column])
-        text_inputs = tokenizer(captions, padding="max_length", truncation=True, max_length=tokenizer.model_max_length)
+        text_inputs = tokenizer(captions, padding="max_length", truncation=True, return_tensors="pt")
         
         examples["input_ids"] = text_inputs.input_ids
         examples["attention_mask"] = text_inputs.attention_mask
@@ -326,8 +334,8 @@ def prepare_dataset(args, tokenizer):
     # Build the dataloader
     def collate_fn(examples): 
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
-        input_ids = torch.tensor([example["input_ids"] for example in examples], dtype=torch.long)
-        attention_mask = torch.tensor([example["attention_mask"] for example in examples], dtype=torch.long)
+        input_ids = torch.stack([example["input_ids"] for example in examples]).long()
+        attention_mask = torch.stack([example["attention_mask"] for example in examples]).long()
 
         return {
             "pixel_values": pixel_values,
@@ -336,6 +344,7 @@ def prepare_dataset(args, tokenizer):
             "return_loss": True,
         }
 
+    # DataLoaders creation
     dataloader = {}
     for dataset_part in dataset.keys():
         dataloader[dataset_part] = torch.utils.data.DataLoader(
@@ -402,7 +411,11 @@ def log_validation(args, model, dataloader, global_step, writer):
 
         # Log validation information
         for id, batch in enumerate(dataloader['validation']):
-            if id not in args.validation_ids: continue
+            if id not in args.validation_ids: 
+                continue
+            
+            if id >= max(args.validation_ids): 
+                break
 
             validation_batch["input_ids"].append(batch['input_ids'][0])
             validation_batch["pixel_values"].append(batch['pixel_values'][0])
@@ -558,8 +571,8 @@ if __name__ == "__main__":
         desc="Steps",
     )
 
+    # Train!
     logger.info("============ Training Begins ============")
-    # Train the tokenizer
     for epoch in range(first_epoch, args.num_train_epochs):
 
         # Initialize statistics

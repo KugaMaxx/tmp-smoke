@@ -1,17 +1,18 @@
 #!/usr/bin/env python
+#
 # This script is a variant of Text-to-image from diffusers. You may find more
 # details at 
 #
 #   https://github.com/huggingface/diffusers/tree/main/examples/text_to_image
 #
-# Unlike the source code, the image will be encoded as part of the model's input 
-# rather than only embedding the prompt text. And some irrelevant codes that are 
-# unrelated to the project have been deleted for simplification.
+# Unlike the source code, the time-series sensor data will be tokenized by the
+# pretrained VQ-VAE, and the CLIP model is also pretrained to align with the 
+# modified tokenizer. The training process is similar to the original one, but
+# some irrelevant codes have been deleted for simplification.
 
 import os
 import math
 import shutil
-import random
 import logging
 import argparse
 import contextlib
@@ -31,7 +32,6 @@ import datasets
 from datasets import load_dataset
 
 # accelerate
-import accelerate
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
@@ -45,6 +45,8 @@ from diffusers.utils.import_utils import is_xformers_available, is_wandb_availab
 # transforms
 import transformers
 from transformers import CLIPTextModel, CLIPTokenizer, CLIPModel
+
+from lychee_smore import VQTokenizer
 
 
 logger = get_logger(__name__, log_level="INFO")
@@ -64,7 +66,6 @@ def parse_args():
         "--revision",
         type=str,
         default=None,
-        required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -86,9 +87,9 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--train_data_dir",
+        "--dataset_dir",
         type=str,
-        default="/root/autodl-tmp/cube-texture",
+        default="/root/autodl-tmp/corridor-texture",
         help=(
             "A folder containing the training data. Folder contents must follow the structure described in"
             " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
@@ -120,34 +121,44 @@ def parse_args():
         help="The column of the dataset containing a caption or a list of captions.",
     )
 
-    # validation
+    # image processing
     parser.add_argument(
-        "--validation_prompts",
-        type=str,
-        default=[
-            "[T]=10.00; [HD]=129.31, 20.02, 20.00, 39.33, 20.01, 20.00", 
-            "[T]=60.00; [HD]=30.20, 811.10, 31.47, 49.57, 369.17, 52.13", 
-            "[T]=40.00; [HD]=20.91, 21.56, 639.83, 48.35, 41.04, 204.62"
-        ],
-        nargs="*",
-        help=("A set of prompts evaluated every `--validation_steps` and logged to `--report_to`."),
+        "--resolution",
+        type=int,
+        default=512,
+        help=(
+            "The resolution for input images, all the images in the train/validation dataset will be resized to this"
+            " resolution"
+        ),
     )
     parser.add_argument(
-        "--validation_images",
+        "--center_crop",
+        default=False,
+        action="store_true",
+        help=(
+            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+            " cropped. The images will be resized to the resolution first before cropping."
+        ),
+    )
+    parser.add_argument(
+        "--random_flip",
+        action="store_true",
+        help="whether to randomly flip images horizontally",
+    )
+
+    # validation
+    parser.add_argument(
+        "--validation_ids",
         type=str,
-        default=[
-            "/root/autodl-tmp/cube-texture-1024/database/cube_s01_h0600/cube_s01_h0600_020.png",
-            "/root/autodl-tmp/cube-texture-1024/database/cube_s02_h2000/cube_s02_h2000_120.png",
-            "/root/autodl-tmp/cube-texture-1024/database/cube_s03_h1400/cube_s03_h1400_080.png"
-        ],
+        default=[500, 1500, 2500],
         nargs="*",
-        help=("A set of prompts evaluated every `--validation_steps` and logged to `--report_to`."),
+        help=("A set of validation data evaluated every `--validation_steps`."),
     )
     parser.add_argument(
         "--validation_steps",
         type=int,
         default=100,
-        help="Run validation every X epochs.",
+        help="Run validation every X steps.",
     )
 
     # logging and checkpoint
@@ -215,31 +226,6 @@ def parse_args():
         ),
     )
 
-    # image trainsform
-    parser.add_argument(
-        "--resolution",
-        type=int,
-        default=512,
-        help=(
-            "The resolution for input images, all the images in the train/validation dataset will be resized to this"
-            " resolution"
-        ),
-    )
-    parser.add_argument(
-        "--center_crop",
-        default=False,
-        action="store_true",
-        help=(
-            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
-            " cropped. The images will be resized to the resolution first before cropping."
-        ),
-    )
-    parser.add_argument(
-        "--random_flip",
-        action="store_true",
-        help="whether to randomly flip images horizontally",
-    )
-
     # training
     parser.add_argument(
         "--seed", 
@@ -282,6 +268,29 @@ def parse_args():
         help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
     parser.add_argument(
+        "--dataloader_num_workers",
+        type=int,
+        default=0,
+        help=(
+            "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
+        ),
+    )
+    parser.add_argument(
+        "--prediction_type",
+        type=str,
+        default=None,
+        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediction_type` is chosen.",
+    )
+
+    # optimizer
+    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
+    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
+    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
+
+    # scheduler
+    parser.add_argument(
         "--learning_rate",
         type=float,
         default=1e-5,
@@ -308,25 +317,6 @@ def parse_args():
         default=0, 
         help="Number of steps for the warmup in the lr scheduler."
     )
-    parser.add_argument(
-        "--dataloader_num_workers",
-        type=int,
-        default=0,
-        help=(
-            "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
-        ),
-    )
-    parser.add_argument(
-        "--prediction_type",
-        type=str,
-        default=None,
-        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediction_type` is chosen.",
-    )
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
-    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
 
     # acceleration & memory saving
     parser.add_argument(
@@ -373,10 +363,10 @@ def parse_args():
         args.local_rank = env_local_rank
 
     # arguments checks
-    if args.dataset_name is None and args.train_data_dir is None:
+    if args.dataset_name is None and args.dataset_dir is None:
         raise ValueError("Need either a dataset name or a training folder.")
-    elif args.dataset_name is not None and args.train_data_dir is not None:
-        raise ValueError("You cannot set both --dataset_name and --train_data_dir at the same time; only one can be set.")
+    elif args.dataset_name is not None and args.dataset_dir is not None:
+        raise ValueError("You cannot set both --dataset_name and --dataset_dir at the same time; only one can be set.")
 
     if args.report_to == "wandb":
         if not is_wandb_available():
@@ -449,132 +439,120 @@ def prepare_dataset(args, tokenizer, accelerator):
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
-            data_dir=args.train_data_dir,
+            data_dir=args.dataset_dir,
             trust_remote_code=True
         )
-    else:
-        if args.train_data_dir is not None:
-            dataset = load_dataset(
-                args.train_data_dir,
-                cache_dir=args.cache_dir,
-                trust_remote_code=True
-            )
+    elif args.dataset_dir is not None:
+        dataset = load_dataset(
+            args.dataset_dir,
+            data_dir=args.dataset_dir,
+            cache_dir=args.cache_dir,
+            trust_remote_code=True
+        )
 
     # Check column
-    column_names = dataset["train"].column_names
-    if args.image_column is None or args.image_column not in column_names:
+    if args.image_column is None or args.image_column not in dataset['train'].column_names:
         raise ValueError(
-            f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
+            f"--image_column' value '{args.image_column}' not found in the train dataset, "
+            f"needs to be one of: {', '.join(dataset['train'].column_names)}"
         )
-    else:
-        image_column = args.image_column
-
-    if args.conditioning_image_column is None or args.conditioning_image_column not in column_names:
+    elif args.image_column not in dataset['validation'].column_names:
         raise ValueError(
-            f"--image_column' value '{args.conditioning_image_column}' needs to be one of: {', '.join(column_names)}"
+            f"--image_column' value '{args.image_column}' not found in the validation dataset, "
+            f"needs to be one of: {', '.join(dataset['validation'].column_names)}"
         )
-    else:
-        conditioning_image_column = args.conditioning_image_column
 
-    if args.caption_column is None or args.caption_column not in column_names:
+    if args.caption_column is None or args.caption_column not in dataset['train'].column_names:
         raise ValueError(
-            f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
+            f"--caption_column' value '{args.caption_column}' not found in the validation dataset, "
+            f"needs to be one of: {', '.join(dataset['train'].column_names)}"
         )
-    else:
-        caption_column = args.caption_column
-
-    # Preprocessing the datasets.
-    def tokenize_captions(examples, is_train=True):
-        captions = []
-        for caption in examples[caption_column]:
-            if isinstance(caption, str):
-                captions.append(caption)
-            elif isinstance(caption, (list, np.ndarray)):
-                # take a random caption if there are multiple
-                captions.append(random.choice(caption) if is_train else caption[0])
-            else:
-                raise ValueError(
-                    f"Caption column `{caption_column}` should contain either strings or lists of strings."
-                )
-        inputs = tokenizer(
-            captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+    elif args.caption_column not in dataset['validation'].column_names:
+        raise ValueError(
+            f"--caption_column' value '{args.caption_column}' not found in the validation dataset, "
+            f"needs to be one of: {', '.join(dataset['validation'].column_names)}"
         )
-        return inputs.input_ids
 
-    train_transforms = transforms.Compose(
-        [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.LANCZOS),  # Use dynamic interpolation method
-            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
-            transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ]
-    )
-    
-    def preprocess_train(examples):
+    def preprocess(examples):
+        # Preprocess the images
+        image_transforms = transforms.Compose(
+            [
+                transforms.Resize((args.resolution, args.resolution), interpolation=transforms.InterpolationMode.LANCZOS),
+                transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
+                transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
         images = [image.convert("RGB") for image in examples[args.image_column]]
-        images = [train_transforms(image) for image in images]
-
-        conditioning_images = [image.convert("RGB") for image in examples[args.conditioning_image_column]]
-        conditioning_images = [train_transforms(image) for image in conditioning_images]
-
+        images = [image_transforms(image) for image in images]
+        
         examples["pixel_values"] = images
-        examples["conditioning_pixel_values"] = conditioning_images
-        examples["input_ids"] = tokenize_captions(examples)
+
+        # Preprocess the captions
+        captions = list(examples[args.caption_column])
+        text_inputs = tokenizer(captions, padding="max_length", truncation=True, return_tensors="pt")
+
+        examples["input_ids"] = text_inputs.input_ids
+        
         return examples
     
     with accelerator.main_process_first():
         # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
+        dataset = dataset.with_transform(preprocess)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-
-        conditioning_pixel_values = torch.stack([example["conditioning_pixel_values"] for example in examples])
-        conditioning_pixel_values = conditioning_pixel_values.to(memory_format=torch.contiguous_format).float()
         
-        input_ids = torch.stack([example["input_ids"] for example in examples])
+        input_ids = torch.stack([example["input_ids"] for example in examples]).long()
 
         return {
             "pixel_values": pixel_values,
-            "conditioning_pixel_values": conditioning_pixel_values,
             "input_ids": input_ids,
         }
 
-    # DataLoaders creation:
-    train_dataloader = torch.utils.data.DataLoader(
-        train_dataset,
-        shuffle=True,
-        collate_fn=collate_fn,
-        batch_size=args.train_batch_size,
-        num_workers=args.dataloader_num_workers,
-    )
+    # DataLoaders creation
+    dataloader = {}
+    for dataset_part in dataset.keys():
+        dataloader[dataset_part] = torch.utils.data.DataLoader(
+            dataset[dataset_part],
+            shuffle=True if dataset_part == 'train' else False,
+            collate_fn=collate_fn,
+            batch_size=args.train_batch_size if dataset_part == 'train' else 1,
+            num_workers=args.dataloader_num_workers
+        )
 
-    return train_dataloader
+    return dataloader
 
 
-def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, step, is_final_validation=False):
-    if args.validation_prompts is None:
-        return None
+def save_checkpoint(args, accelerator, global_step):
+    # If no checkpoints are to be saved, return
+    if args.checkpoints_total_limit <= 0:
+        return
+
+    # Delete checkpoint if total checkpoints exceed limit
+    if args.checkpoints_total_limit is not None:
+        checkpoints = sorted(Path(args.output_dir).glob("checkpoint-*"), key=lambda x: int(x.stem.split("-")[1]))
+        if len(checkpoints) >= args.checkpoints_total_limit - 1:
+            for removing_checkpoint in checkpoints[:len(checkpoints) - args.checkpoints_total_limit + 1]:
+                shutil.rmtree(removing_checkpoint)
+
+    # Create checkpoint directory
+    checkpoint_path = Path(args.output_dir) / f"checkpoint-{global_step}"
+    checkpoint_path.mkdir(parents=True, exist_ok=True)
+
+    accelerator.save_state(checkpoint_path)
+    logger.info(f"Saved state to {checkpoint_path}")
+
+
+def log_validation(args, pipeline, accelerator, dataloader, global_step, is_final_validation=False):
+    # If no validation IDs are provided, skip validation
+    if args.validation_ids is None or len(args.validation_ids) == 0:
+        return
     
     logger.info("Running validation... ")
-    if not is_final_validation:
-        unet = accelerator.unwrap_model(unet)
-    else:
-        unet = UNet2DConditionModel.from_pretrained(args.output_dir, subfolder="unet", torch_dtype=weight_dtype)
 
-    pipeline = StableDiffusionPipeline.from_pretrained(
-        args.pretrained_model_name_or_path,
-        vae=vae,
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
-        unet=unet,
-        safety_checker=None,
-        revision=args.revision,
-        variant=args.variant,
-        torch_dtype=weight_dtype
-    )
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
@@ -586,41 +564,29 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
     else:
         generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
-    images = []
-    for (validation_image, validation_prompt) in zip(args.validation_images, args.validation_prompts):
-        validation_target = Image.open(validation_image.replace(args.conditioning_image_column, args.image_column)).convert("RGB")
-        validation_image = Image.open(validation_image).convert("RGB")
+    # Log validation information
+    for id, batch in enumerate(dataloader['validation']):
+        if id not in args.validation_ids: 
+            continue
+        
+        if id >= max(args.validation_ids): 
+            break
 
+        prompt_embeds = pipeline.text_encoder(batch["input_ids"])
+        
         autocast_ctx = contextlib.nullcontext() if is_final_validation else torch.autocast(accelerator.device.type)
 
         with autocast_ctx:
             validation_result = pipeline(
-                validation_prompt, num_inference_steps=20, generator=generator, height=args.resolution, width=args.resolution
+                prompt_embeds=prompt_embeds, num_inference_steps=20, generator=generator, height=args.resolution, width=args.resolution
             ).images[0]
 
-        images.extend([validation_target, validation_result])
-
-    for tracker in accelerator.trackers:
-        tracker_key = "final" if is_final_validation else "validation"
-        if tracker.name == "tensorboard":
-            np_images = np.stack([img for img in images])
-            tracker.writer.add_images(tracker_key, np_images, step, dataformats="NHWC")
-        elif tracker.name == "wandb":
-            tracker.log(
-                {
-                    tracker_key: [
-                        wandb.Image(image, caption=f"{i}: {args.validation_prompts[i]}")
-                        for i, image in enumerate(images)
-                    ]
-                }
-            )
-        else:
-            logger.warning(f"image logging not implemented for {tracker.name}")
-
-    del pipeline
-    torch.cuda.empty_cache()
-
-    return images
+        for tracker in accelerator.trackers:
+            if tracker.name == "tensorboard":
+                # Log to tensorboard
+                tracker.writer.add_figure(f'validation/data_{id}', validation_result, global_step, dataformats="NHWC")
+            else:
+                logger.warning(f"image logging not implemented for {tracker.name}")
 
 
 if __name__ == "__main__":
@@ -647,15 +613,7 @@ if __name__ == "__main__":
     if args.seed is not None:
         set_seed(args.seed)
 
-    # Load model
-    text_encoder = CLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
-    )
-    clip_model = CLIPModel.from_pretrained(
-        "/root/autodl-tmp/clip-finetuned", revision=args.revision, variant=args.variant
-    )
-    text_encoder.text_model = clip_model.text_model
-
+    # Initialize pretrained unet and vae
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
     )
@@ -663,7 +621,11 @@ if __name__ == "__main__":
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
 
-    tokenizer = CLIPTokenizer.from_pretrained(
+    # Initialize finetuned text encoder and tokenizer 
+    text_encoder = CLIPTextModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
+    )
+    tokenizer = VQTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
     noise_scheduler = DDPMScheduler.from_pretrained(
@@ -718,11 +680,11 @@ if __name__ == "__main__":
         )
 
     # Initialize dataloader
-    train_dataloader = prepare_dataset(args, tokenizer, accelerator)
+    dataloader = prepare_dataset(args, tokenizer, accelerator)
     
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(len(dataloader['train']) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -743,12 +705,12 @@ if __name__ == "__main__":
     )
 
     # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
+    unet, optimizer, dataloader, lr_scheduler = accelerator.prepare(
+        unet, optimizer, dataloader, lr_scheduler
     )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(len(dataloader['train']) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
@@ -765,7 +727,7 @@ if __name__ == "__main__":
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
-    logger.info("***** Running training *****")
+    logger.info("============ Training Begins ============")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
@@ -802,6 +764,11 @@ if __name__ == "__main__":
     else:
         initial_global_step = 0
 
+    # Check if checkpointing steps and validation steps are set, otherwise use default values
+    args.checkpointing_steps = args.checkpointing_steps if args.checkpointing_steps else num_update_steps_per_epoch
+    args.validation_steps = args.validation_steps if args.validation_steps else num_update_steps_per_epoch
+
+    # Initial progress bar
     progress_bar = tqdm(
         range(0, args.max_train_steps),
         initial=initial_global_step,
@@ -811,8 +778,12 @@ if __name__ == "__main__":
     )
 
     for epoch in range(first_epoch, args.num_train_epochs):
+
+        # Initialize statistics
         train_loss = 0.0
-        for step, batch in enumerate(train_dataloader):
+
+        # Train one epoch
+        for step, batch in enumerate(dataloader['train']):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
@@ -871,42 +842,25 @@ if __name__ == "__main__":
                 if accelerator.is_main_process:
                     # Save checkpoint
                     if global_step % args.checkpointing_steps == 0:
-                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
-                        if args.checkpoints_total_limit is not None:
-                            checkpoints = os.listdir(args.output_dir)
-                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
-                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
-
-                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
-                            if len(checkpoints) >= args.checkpoints_total_limit:
-                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
-                                removing_checkpoints = checkpoints[0:num_to_remove]
-
-                                logger.info(
-                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
-                                )
-                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
-
-                                for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
-                                    shutil.rmtree(removing_checkpoint)
-
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
+                        save_checkpoint(args, accelerator, global_step)
 
                     # Run validation
                     if global_step % args.validation_steps == 0:
-                        log_validation(
-                            vae,
-                            text_encoder,
-                            tokenizer,
-                            unet,
-                            args,
-                            accelerator,
-                            weight_dtype,
-                            global_step,
+                        pipeline = StableDiffusionPipeline.from_pretrained(
+                            args.pretrained_model_name_or_path,
+                            vae=vae,
+                            text_encoder=text_encoder,
+                            tokenizer=tokenizer,
+                            unet=accelerator.unwrap_model(unet),
+                            safety_checker=None,
+                            revision=args.revision,
+                            variant=args.variant,
+                            torch_dtype=weight_dtype
                         )
+                        log_validation(args, pipeline, accelerator, dataloader, global_step)
+                        
+                        del pipeline
+                        torch.cuda.empty_cache()
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -917,14 +871,12 @@ if __name__ == "__main__":
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = accelerator.unwrap_model(unet)
-
         pipeline = StableDiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            vae=vae,
-            text_encoder=text_encoder,
             tokenizer=tokenizer,
-            unet=unet,
+            text_encoder=text_encoder,
+            vae=vae,
+            unet=accelerator.unwrap_model(unet),
             safety_checker=None,
             revision=args.revision,
             variant=args.variant,
@@ -934,11 +886,11 @@ if __name__ == "__main__":
 
         # Run a final round of validation.
         log_validation(
-            vae=vae,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            unet=unet,
             args=args,
+            tokenizer=tokenizer,
+            text_encoder=text_encoder,
+            vae=vae,
+            unet=unet,
             accelerator=accelerator,
             weight_dtype=weight_dtype,
             step=global_step,
