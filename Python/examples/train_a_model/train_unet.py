@@ -307,7 +307,10 @@ def parse_args():
         "--prediction_type",
         type=str,
         default=None,
-        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediction_type` is chosen.",
+        help=(
+            "The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. "
+            "If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediction_type` is chosen."
+        )
     )
 
     # optimizer
@@ -340,8 +343,8 @@ def parse_args():
     )
     parser.add_argument(
         "--lr_warmup_steps", 
-        type=int, 
-        default=0, 
+        type=int,
+        default=0,
         help="Number of steps for the warmup in the lr scheduler."
     )
 

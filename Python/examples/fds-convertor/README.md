@@ -1,7 +1,8 @@
 # FDS Convertor
 
-This is an example guide to convert FDS (Fire Dynamics Simulator) data to a
- 2D texture dataset suitable for training a Stable Diffusion model.
+This is an example guide to convert [FDS](https://github.com/firemodels/fds)
+ (Fire Dynamics Simulator) data to a 2D texture dataset suitable for training a 
+ Stable Diffusion model.
 
 ## Prepare FDS files
 
@@ -98,18 +99,21 @@ This will generate a new directory structure with the expanded cases:
 
 ### Running FDS simulations
 
-Now that you have all FDS files ready, you need to run each of them to generate the
- required plot3d_data, which consists of a series of `.q` files. These files should
- be placed in the same directory as the corresponding `.fds` file.
+Now that you have all FDS files ready, you need to run FDS on each of them to
+ generate the required plot3d_data, which consists of a series of `.q` files. 
+ These files should be placed in the same directory as the corresponding `.fds` file.
 
 ```bash
-# This process can take a long time
-bash run_fds.sh <one_case_fds_dir>
-# For example:
-# bash run_fds.sh <your_expand_fds_dir>/train/<case_1>_h1000
+# Take the first case as an example:
+cd <your_expand_fds_dir>/train/<case_1>_h1000
+
+# Run fds simulation, this process can take a long time
+fds <case_1>_h1000.fds
+# You can also run in the background if you have multiple cases:
+# nohup fds <case_1>_h1000.fds &
 ```
 
-因此，你的 fds 文件夹最后构成如下：
+Therefore, your FDS folder should finally look like this:
 
 ```bash
 <your_expand_fds_dir>
@@ -125,6 +129,9 @@ bash run_fds.sh <one_case_fds_dir>
 │   │   ├── <case_1>_<random_hrr>_1_00p10.q
 │   │   ├── ...
 ```
+
+**Note 1:** For the installation of FDS, please refer to the
+ [FDS installation guide](https://pages.nist.gov/fds-smv/) for details.
 
 ## Convert to dataset
 

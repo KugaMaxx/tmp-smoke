@@ -175,6 +175,11 @@ def process_single_case(case_info):
             "image": f"{split_type}/{image_path.stem}/{image_name}",
             "text": ";".join([",".join([f"{val:.3f}" for val in row]) for row in history_devc.T.values])
         })
+
+    with open(f"{image_path / 'prompt.jsonl'}", 'w') as f:
+        for caption in captions:
+            json.dump(caption['image'].split('/')[-1], f)
+            f.write("\n")
     
     return captions
 
