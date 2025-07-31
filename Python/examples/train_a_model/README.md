@@ -138,22 +138,19 @@ Finetune a text-to-image Stable Diffusion model based on the
 [stable-diffusion-v1-5](https://huggingface.co/CompVis/stable-diffusion-v1-5):
 
 ```bash
-export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export DATASET_NAME="lambdalabs/naruto-blip-captions"
-
 accelerate launch --mixed_precision="fp16"  train_unet.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
+  --tokenizer_name_or_path=$OUTPUT_DIR \
+  --text_encoder_name_or_path=$OUTPUT_DIR \
   --dataset_name=$DATASET_NAME \
-  --use_ema \
-  --resolution=512 --center_crop --random_flip \
-  --train_batch_size=1 \
-  --gradient_accumulation_steps=4 \
-  --gradient_checkpointing \
-  --max_train_steps=15000 \
+  --output_dir=$OUTPUT_DIR \
+  --train_batch_size=16 \
+  --num_train_epochs=10 \
   --learning_rate=1e-5 \
-  --max_grad_norm=1 \
-  --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --output_dir="sd-naruto-model"
+  --validation_ids=[500, 1500, 2500] \
+  --gradient_checkpointing \
+  --gradient_accumulation_steps=4
+  --trust_remote_code
 ```
 
 With gradient_checkpointing and mixed_precision it should be possible to fine tune
@@ -166,6 +163,15 @@ Once the model is trained, you can use it to generate 2D-smoke-texture image
  from the time-series sensor data.
 
 ```python
+from diffusers import StableDiffusionPipeline
+
+# load as pipeline
+pipeline = StableDiffusionPipeline.from_pretrained(
+    <output_dir>, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+)
+
+# pass prompt to pipeline
+pred_texture = pipeline(<time_series_data>, guidance_scale=1.0).images[0]
 ```
 
 Please move to the [run_pipeline.md]() for more details on how to use the

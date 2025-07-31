@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train a VQ Tokenizer")
+    parser = argparse.ArgumentParser(description="Train a CLIP model with the finetuned VQ tokenizer.")
 
     # pretrained model
     parser.add_argument(

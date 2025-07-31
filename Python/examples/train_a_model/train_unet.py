@@ -83,7 +83,6 @@ def parse_args():
             "Please make sure that the tokenizer is finetuned on the same dataset in advance."
         ),
     )
-
     parser.add_argument(
         "--revision",
         type=str,
@@ -579,7 +578,7 @@ def log_validation(args, pipeline, accelerator, dataloader, global_step, is_fina
     # If no validation IDs are provided, skip validation
     if args.validation_ids is None or len(args.validation_ids) == 0:
         return
-    
+
     logger.info("Running validation... ")
 
     pipeline = pipeline.to(accelerator.device)
@@ -605,13 +604,20 @@ def log_validation(args, pipeline, accelerator, dataloader, global_step, is_fina
 
         with torch.autocast(accelerator.device.type):
             validation_result = pipeline(
-                prompt_embeds=prompt_embeds, num_inference_steps=20, generator=generator, height=args.resolution, width=args.resolution
+                prompt_embeds=prompt_embeds,
+                num_inference_steps=20,
+                guidance_scale=1.0,
+                generator=generator,
+                height=args.resolution,
+                width=args.resolution,
             ).images[0]
+            validation_result = np.array(validation_result.convert("L"))
+            validation_result = np.expand_dims(validation_result, axis=-1)
 
         for tracker in accelerator.trackers:
             if tracker.name == "tensorboard":
                 # Log to tensorboard
-                tracker.writer.add_images(f'validation/recon_{id}', np.array(validation_result), global_step, dataformats="HWC")
+                tracker.writer.add_images(f'validation/recon_{id}', validation_result, global_step, dataformats="HWC")
             else:
                 logger.warning(f"image logging not implemented for {tracker.name}")
 

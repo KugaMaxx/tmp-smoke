@@ -145,10 +145,10 @@ class VQTokenizer(PreTrainedTokenizer):
         Load a tokenizer from a pretrained model.
         """
         # Check if the path is a directory or a model identifier
-        if kwargs['subfolder'] is not None:
-            tokenizer_dir = os.path.join(pretrained_model_name_or_path, kwargs['subfolder'])
+        if kwargs.get('subfolder') is None:
+             tokenizer_dir = pretrained_model_name_or_path
         else:
-            tokenizer_dir = pretrained_model_name_or_path
+            tokenizer_dir = os.path.join(pretrained_model_name_or_path, kwargs['subfolder'])
 
         # Load VQ model and config
         vq_save_directory = os.path.join(tokenizer_dir, "vq_model")

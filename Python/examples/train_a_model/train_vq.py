@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train a VQ Tokenizer")
+    parser = argparse.ArgumentParser(description="Train a VQ Tokenizer for time series data.")
 
     # pretrained model
     parser.add_argument(
