@@ -73,21 +73,10 @@ TODO: 准备一个小型的 cube 数据集，大小控制在 500M 左右
 TODO: 从hugging face上拉取一个包含了tokenizer和clip的diffusion模型，然后在那个基础上训练，
 这个模型是几个预训练模型拼凑起来的
 
-<!-- First of first, download the pretrained model:
-
 ```bash
-python3 ./create_pretrained.py \
-  --pretrained_model_name_or_path="stable-diffusion-v1-5/stable-diffusion-v1-5" \
-  --output_dir="./3d-smoke-sd-wo-training"
-```
-
-Train a model without pretrained model is not recommended, as it will cause
- model collapse. -->
-
-```bash
-export MODEL_NAME="3d-smoke-sd/3d-smoke-sd-wo-training"
+export MODEL_NAME="3d-smoke-sd/3d-smoke-sd-8ch-untrained"
 export DATASET_NAME="KugaMaxx/cube-demo"
-export OUTPUT_DIR="./3d-smoke-sd"
+export OUTPUT_DIR="<project_base_dir>/models/3d-smoke-sd-8ch-finetuned"
 ```
 
 ### Step 1. Train a VQ tokenizer
@@ -104,8 +93,22 @@ python3 ./train_vq.py \
   --train_batch_size=128 \
   --num_train_epochs=150 \
   --learning_rate=1e-5 \
-  --lr_scheduler="constant" \
-  --dataloader_num_workers=4 \
+  --validation_ids=[500, 1500, 2500] \
+  --trust_remote_code
+```
+
+The above training is designed for 8-channel sensors, if you want to train a
+ tokenizer with a different number of channels, you can load it from config file. 
+ One example is located at `./configs/tokenizer/vq_model/config.json`:
+
+```bash
+python3 ./train_vq.py \
+  --config_path=<path_to_config_file> \
+  --dataset_name=$DATASET_NAME \
+  --output_dir=$OUTPUT_DIR \
+  --train_batch_size=128 \
+  --num_train_epochs=150 \
+  --learning_rate=1e-5 \
   --validation_ids=[500, 1500, 2500] \
   --trust_remote_code
 ```
@@ -124,8 +127,6 @@ python3 ./train_clip.py \
   --train_batch_size=128 \
   --num_train_epochs=30 \
   --learning_rate=5e-5 \
-  --lr_scheduler="constant" \
-  --dataloader_num_workers=4 \
   --freeze_vision_model \
   --validation_ids=[500, 1500, 2500] \
   --trust_remote_code

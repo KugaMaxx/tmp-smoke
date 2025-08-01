@@ -38,8 +38,13 @@ def parse_args():
         "--pretrained_model_name_or_path",
         type=str,
         default=None,
-        required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--config_path",
+        type=str,
+        default=None,
+        help="Path to the configuration file. The model will be initialized with this config if provided.",
     )
     parser.add_argument(
         "--revision",
@@ -425,14 +430,23 @@ if __name__ == "__main__":
     writer = SummaryWriter(log_dir=logging_dir / args.tracker_project_name)
 
     # Initialize VQ Tokenizer
-    tokenizer = VQTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="tokenizer",
-        revision=args.revision,
-        variant=args.variant,
-        cache_dir=args.cache_dir,
-        trust_remote_code=args.trust_remote_code
-    )
+    if args.pretrained_model_name_or_path is not None:
+        tokenizer = VQTokenizer.from_pretrained(
+            args.pretrained_model_name_or_path,
+            subfolder="tokenizer",
+            revision=args.revision,
+            variant=args.variant,
+            cache_dir=args.cache_dir,
+            trust_remote_code=args.trust_remote_code
+        )
+    elif args.config_path is not None:
+        tokenizer = VQTokenizer.from_config(
+            args.config_path,
+            cache_dir=args.cache_dir,
+            trust_remote_code=args.trust_remote_code
+        )
+    else:
+        raise ValueError("Either `--pretrained_model_name_or_path` or `--config_path` must be provided.")
     
     # Log information
     logger.info(f"Training Arguments: \n {'\n '.join([f'{arg}: {value}' for arg, value in vars(args).items()])} \n")
