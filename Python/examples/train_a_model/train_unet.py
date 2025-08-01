@@ -15,10 +15,10 @@ import math
 import shutil
 import logging
 import argparse
+import datetime
 import contextlib
 
 import numpy as np
-from PIL import Image
 from pathlib import Path
 from tqdm.auto import tqdm
 
@@ -186,7 +186,7 @@ def parse_args():
         help="Run validation every X steps.",
     )
 
-    # logging and checkpoint
+    # directories
     parser.add_argument(
         "--output_dir",
         type=str,
@@ -208,6 +208,16 @@ def parse_args():
             " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
         ),
     )
+    parser.add_argument(
+        "--tracker_project_name",
+        type=str,
+        default="unet-training",
+        help=(
+            "The `project_name` argument passed to logging tracker"
+        ),
+    )
+
+    # checkpointing
     parser.add_argument(
         "--checkpointing_steps",
         type=int,
@@ -239,15 +249,6 @@ def parse_args():
         help=(
             'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
             ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
-        ),
-    )
-    parser.add_argument(
-        "--tracker_project_name",
-        type=str,
-        default="digital-twin-smoke",
-        help=(
-            "The `project_name` argument passed to Accelerator.init_trackers for"
-            " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
     )
 
@@ -626,16 +627,22 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Make one log on every process with the configuration for debugging.
-    logging_dir = os.path.join(args.output_dir, args.logging_dir)
+    logging_dir = Path(args.output_dir) / args.logging_dir / args.tracker_project_name
+    logging_dir.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
+        level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO,
+        handlers=[
+            logging.FileHandler(logging_dir / f"{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log"),
+            logging.StreamHandler()  # Also output to console
+        ],
     )
 
     # Initialize accelerator
     accelerator = prepare_accelerator(args)
     logger.info(accelerator.state, main_process_only=False)
+    logger.info(f"Starting script: {Path(__file__).name}")
 
     # Handle the repository creation
     if accelerator.is_main_process:

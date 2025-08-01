@@ -142,6 +142,14 @@ def parse_args():
             " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
         ),
     )
+    parser.add_argument(
+        "--tracker_project_name",
+        type=str,
+        default="vq-training",
+        help=(
+            "The `project_name` argument passed to logging tracker"
+        ),
+    )
 
     # checkpointing
     parser.add_argument(
@@ -404,6 +412,7 @@ if __name__ == "__main__":
             logging.StreamHandler()  # Also output to console
         ]
     )
+    logger.info(f"Starting script: {Path(__file__).name}")
 
     # If passed along, set the training seed now.
     if args.seed is not None:
@@ -413,7 +422,7 @@ if __name__ == "__main__":
     dataloader = prepare_dataset(args)
 
     # Initialize TensorBoard writer
-    writer = SummaryWriter(log_dir=logging_dir / "tensorboard")
+    writer = SummaryWriter(log_dir=logging_dir / args.tracker_project_name)
 
     # Initialize VQ Tokenizer
     tokenizer = VQTokenizer.from_pretrained(
