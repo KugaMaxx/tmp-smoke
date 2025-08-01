@@ -627,7 +627,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Make one log on every process with the configuration for debugging.
-    logging_dir = Path(args.output_dir) / args.logging_dir / args.tracker_project_name
+    logging_dir = Path(args.output_dir) / args.logging_dir
     logging_dir.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
