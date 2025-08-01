@@ -44,18 +44,16 @@ accelerate config default
 
 ### Prepare the dataset
 
-In this example, we will use the 
-[cube-demo](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions)
-uploaded to the 🤗 Hugging Face Hub. Therefore You have to be a registered 
-user and run the following command to 
-[authenticate your token](https://huggingface.co/docs/hub/security-tokens):
+In this example, we will use
+ [🤗 Datasets](https://huggingface.co/docs/datasets/en/index) to automatically
+ download from the Hugging Face Hub. Therefore You have to be a registered user
+ and run the following command to
+ [authenticate your token](https://huggingface.co/docs/hub/security-tokens)
+ in advance:
 
 ```bash
 huggingface-cli login
 ```
-
-The dataset will be automatically downloaded when you set `--dataset_name` and
-run the training script.
 
 **Note 1:** Also you can directly download and extract the dataset to a local
 directory (`./Python/data` by default) and specify the path (`--dataset_dir`)
@@ -66,12 +64,10 @@ in the training script. All datasets used in this project can be found in this
 **Note 2:** If you what to build your own dataset from fds simulation, you can
 check [fds-convertor.md]() for more details.
 
-TODO: 准备一个小型的 cube 数据集，大小控制在 500M 左右
-
 ## Running step by step
 
-TODO: 从hugging face上拉取一个包含了tokenizer和clip的diffusion模型，然后在那个基础上训练，
-这个模型是几个预训练模型拼凑起来的
+Before running the training scripts, you need to set the following environment
+variables in your terminal:
 
 ```bash
 export MODEL_NAME="3d-smoke-sd/3d-smoke-sd-8ch-untrained"
