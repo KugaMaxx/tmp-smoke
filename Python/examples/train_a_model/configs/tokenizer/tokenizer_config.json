@@ -1,0 +1,31 @@
+{
+  "added_tokens_decoder": {
+    "49406": {
+      "content": "<|startoftext|>",
+      "lstrip": false,
+      "normalized": true,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "49407": {
+      "content": "<|endoftext|>",
+      "lstrip": false,
+      "normalized": true,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    }
+  },
+  "base_vocab_size": 49406,
+  "bos_token": "<|startoftext|>",
+  "clean_up_tokenization_spaces": false,
+  "eos_token": "<|endoftext|>",
+  "errors": "replace",
+  "extra_special_tokens": {},
+  "model_max_length": 77,
+  "pad_token": "<|endoftext|>",
+  "tokenizer_class": "VQTokenizer",
+  "unk_token": "<|endoftext|>",
+  "variant": null
+}
