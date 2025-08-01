@@ -10,26 +10,48 @@ from datasets import load_dataset
 from diffusers import StableDiffusionPipeline
 
 import pyvista as pv
-from matplotlib.colors import ListedColormap
 
 
 def texture_to_volume(texture, num_rows, num_cols):
     """
     Convert a texture image to a 3D volume representation.
     """
+    # Convert PIL Image to numpy array if needed
     if isinstance(texture, Image.Image):
-        np_texture = np.array(texture.convert('L'))
+        np_texture = np.array(texture.convert('L'))  # Convert to grayscale
     else:
-        np_texture = np.array(texture) if texture.ndim == 2 else texture[:, :, 0]
-
-    X = int(np_texture.shape[1] / num_rows)
-    Y = int(np_texture.shape[0] / num_cols)
-    Z = int(num_rows * num_cols)
-
-    np_texture.resize(X, Y, Z)
-    np_texture = np_texture.astype(np.float32) / 255.0
-
-    return np_texture
+        np_texture = np.array(texture)
+        if np_texture.ndim == 3:
+            np_texture = np_texture[:, :, 0]  # Take first channel if RGB
+    
+    # Get dimensions of the flipbook texture
+    texture_height, texture_width = np_texture.shape
+    
+    # Calculate dimensions of each individual slice
+    slice_height = texture_height // num_cols
+    slice_width = texture_width // num_rows
+    
+    # Extract individual slices from the flipbook
+    slices = []
+    for col in range(num_cols):
+        for row in range(num_rows):
+            # Calculate the position of this slice in the flipbook
+            y_start = col * slice_height
+            y_end = y_start + slice_height
+            x_start = row * slice_width
+            x_end = x_start + slice_width
+            
+            # Extract the slice
+            slice_data = np_texture[y_start:y_end, x_start:x_end]
+            slices.append(slice_data)
+    
+    # Stack slices to form 3D volume [height, width, depth]
+    volume = np.stack(slices, axis=2)
+    
+    # Convert from uint8 [0, 255] to float32 [0, 1] to match original data range
+    volume = volume.astype(np.float32) / 255.0
+    
+    return volume 
 
 
 if __name__ == '__main__':
@@ -38,8 +60,8 @@ if __name__ == '__main__':
     # pipeline
     parser.add_argument(
         "--pretrained_model_name_or_path",
-        default="/home/dszh/workspace/tmp-smoke/Python/examples/train_a_model/3d-smoke-sd",
-        required=False,
+        default=None,
+        required=True,
         type=str,
         help="Path to the pretrained Stable Diffusion model.",
     )
@@ -65,7 +87,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         "--dataset_dir",
-        default="/home/dszh/workspace/tmp-smoke/Python/data/corridor-texture",
+        default=None,
         type=str,
         help="Directory containing the dataset.",
     )
@@ -82,21 +104,33 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         "--start_index",
-        default=2000,
+        default=0,
         type=int,
         help="Starting index for the dataset.",
     )
     parser.add_argument(
         "--end_index",
-        default=3000,
+        default=None,
         type=int,
         help="Ending index for the dataset. If None, will use the entire dataset.",
     )
     parser.add_argument(
         "--step_index",
-        default=5,
+        default=1,
         type=int,
         help="Step index for the dataset. Used to skip samples.",
+    )
+
+    # export
+    parser.add_argument(
+        "--export_png",
+        action="store_true",
+        help="Whether to export the results as a series of images and a GIF.",
+    )
+    parser.add_argument(
+        "--export_vdb",
+        action="store_true",
+        help="Whether to export the results as a series of OpenVDB data.",
     )
 
     # others
@@ -202,49 +236,35 @@ if __name__ == '__main__':
         gt_volume = texture_to_volume(gt_texture, args.num_rows, args.num_cols)
         pred_volume = texture_to_volume(pred_texture, args.num_rows, args.num_cols)
 
-        # Prepare the grid for volume rendering
-        X_grid, Y_grid, Z_grid = np.mgrid[
-            0:gt_volume.shape[0],
-            0:gt_volume.shape[1],
-            0:gt_volume.shape[2]
-        ]
-        X_grid = X_grid.astype(np.float32)
-        Y_grid = Y_grid.astype(np.float32)
-        Z_grid = Z_grid.astype(np.float32)
+        # Set up the scalars
+        if args.export_png:
+            # Define the image path
+            image_path = Path(args.output_dir) / "images" / f"frame_{i:03d}.png"
+            image_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Volume rendering
-        grid = pv.StructuredGrid(X_grid, Y_grid, Z_grid)
-        grid.point_data["scalars"] = pred_volume.flatten()
+            # Create a grid
+            grid = pv.ImageData(dimensions=gt_volume.shape)
+            opacity = pred_volume.transpose(2, 1, 0).flatten().reshape(-1, 1)
+            scalars = np.zeros_like(grid.points)
+            if np.all(opacity == 0): opacity[0] = 1.0  # in case of empty volume
+            scalars = 255 * np.hstack((scalars, opacity))
 
-        # Define the colors we want to use
-        colors = np.ones((256, 4))
-        colors[:, 0] = 0.0
-        colors[:, 1] = 0.0
-        colors[:, 2] = 0.0
-        colors[:, 3] = np.linspace(0, 0.1, 256)
-        cmap = ListedColormap(colors)
+            # Volume rendering
+            plotter.add_volume(grid, scalars=scalars.astype(np.uint8), cmap='gray', opacity='linear')
+            plotter.screenshot(image_path)
+            plotter.clear_actors()
 
-        # Define the image path
-        image_path = Path(args.output_dir) / f"frame_{i:03d}.png"
-
-        # Add the volume to the plotter
-        plotter = pv.Plotter(off_screen=True)
-        plotter.add_volume(grid, scalars="scalars", opacity='linear', cmap=cmap, clim=[0, 1.5])
-        plotter.screenshot(image_path)
-        plotter.clear()
-
-        # Append the image to frames
-        frames.append(Image.open(image_path))
-    
-    # Close the plotter
-    plotter.close()
+            # Append the image to frames
+            frames.append(Image.open(image_path))
 
     # Save the frames as a GIF
     print("Saving animation...")
-    frames[0].save(
-        Path(args.output_dir) / "annimation.gif",
-        save_all=True,
-        append_images=frames[1:],
-        duration=200,
-        loop=0
-    )
+
+    if len(frames) != 0:
+        frames[0].save(
+            Path(args.output_dir) / "annimation.gif",
+            save_all=True,
+            append_images=frames[1:],
+            duration=200,
+            loop=0
+        )

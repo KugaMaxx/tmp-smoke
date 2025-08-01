@@ -2,7 +2,6 @@
 
 import os
 import re
-import math
 import json
 import argparse
 import numpy as np
@@ -11,7 +10,6 @@ from PIL import Image
 from pathlib import Path
 from tqdm import tqdm
 from multiprocessing import Pool
-from functools import partial
 
 
 def extract_time(file_name):
@@ -175,11 +173,6 @@ def process_single_case(case_info):
             "image": f"{split_type}/{image_path.stem}/{image_name}",
             "text": ";".join([",".join([f"{val:.3f}" for val in row]) for row in history_devc.T.values])
         })
-
-    with open(f"{image_path / 'prompt.jsonl'}", 'w') as f:
-        for caption in captions:
-            json.dump(caption['image'].split('/')[-1], f)
-            f.write("\n")
     
     return captions
 
@@ -298,13 +291,13 @@ if __name__ == '__main__':
         "--min_value",
         default=0.0,
         type=float,
-        help="Minimum value for the device data.",
+        help="Minimum value for the texture data.",
     )
     parser.add_argument(
         "--max_value",
         default=1.5,
         type=float,
-        help="Maximum value for the device data.",
+        help="Maximum value for the texture data.",
     )
     parser.add_argument(
         "--num_workers",
