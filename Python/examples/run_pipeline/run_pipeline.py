@@ -9,6 +9,7 @@ from torch.utils.data import Subset
 from datasets import load_dataset
 from diffusers import StableDiffusionPipeline
 
+import openvdb
 import pyvista as pv
 
 
@@ -80,14 +81,9 @@ if __name__ == '__main__':
 
     # dataset
     parser.add_argument(
-        "--dataset_name",
+        "--dataset_name_or_path",
         default=None,
-        type=str,
-        help="Name of the dataset to use. If not provided, will use a local directory.",
-    )
-    parser.add_argument(
-        "--dataset_dir",
-        default=None,
+        required=True,
         type=str,
         help="Directory containing the dataset.",
     )
@@ -175,23 +171,15 @@ if __name__ == '__main__':
         revision=args.revision,
         variant=args.variant,
         safety_checker=None,
-    ).to("cuda")
+    ).to(args.device)
     pipeline.set_progress_bar_config(disable=True)
 
     # Prepare the dataset
-    if args.dataset_name is not None:
-        dataset = load_dataset(
-            args.dataset_name,
-            cache_dir=args.cache_dir,
-            trust_remote_code=args.trust_remote_code
-        )[args.partition]
-    elif args.dataset_dir is not None:
-        dataset = load_dataset(
-            args.dataset_dir,
-            data_dir=args.dataset_dir,
-            cache_dir=args.cache_dir,
-            trust_remote_code=args.trust_remote_code
-        )[args.partition]
+    dataset = load_dataset(
+        args.dataset_name_or_path,
+        cache_dir=args.cache_dir,
+        trust_remote_code=args.trust_remote_code
+    )[args.partition]
 
     dataset = Subset(
         dataset,
@@ -256,6 +244,24 @@ if __name__ == '__main__':
 
             # Append the image to frames
             frames.append(Image.open(image_path))
+
+        if args.export_vdb:
+            # Define the VDB path
+            vdb_path = Path(args.output_dir) / "vdb" / f"smoke_{i:03d}.vdb"
+            vdb_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Create an OpenVDB grid from the volume data
+            grid = openvdb.FloatGrid()
+            grid.name = "opacity"
+
+            # OpenVDB expects (z, y, x) order, so ensure gt_volume is in that order
+            # gt_volume is (height, width, depth), so we need to transpose to (depth, height, width)
+            od = gt_volume
+            opacity = 1 - 10 ** -od
+            grid.copyFromArray(opacity)
+
+            # Write the grid to a VDB file
+            openvdb.write(str(vdb_path), [grid])
 
     # Save the frames as a GIF
     print("Saving animation...")

@@ -21,18 +21,20 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Expand FDS data with varying heat release rates.')
     parser.add_argument(
         "--fds_case_dir",
-        default=str((Path(__file__).parent / "../../data/corridor-fds/.fds").resolve()),
+        default=None,
+        required=True,
         type=str,
     )
     parser.add_argument(
         "--output_dir",
-        default=str((Path(__file__).parent / "../../data/corridor-fds").resolve()),
+        default=None,
+        required=True,
         type=str,
     )
     parser.add_argument("--start_hrr", default=100, type=int)
-    parser.add_argument("--end_hrr", default=2100, type=int)
+    parser.add_argument("--end_hrr", default=1000, type=int)
     parser.add_argument("--step_hrr", default=100, type=int)
-    parser.add_argument("--seed", default=123, type=int)
+    parser.add_argument("--seed", default=42, type=int)
     args = parser.parse_args()
 
     # fix random seed

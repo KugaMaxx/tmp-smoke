@@ -84,7 +84,7 @@ The VQ tokenizer is designed to tokenize long time-series sensor data and its
 ```bash
 python3 ./train_vq.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$DATASET_NAME \
+  --dataset_name_or_path=$DATASET_NAME \
   --output_dir=$OUTPUT_DIR \
   --train_batch_size=128 \
   --num_train_epochs=150 \
@@ -100,7 +100,7 @@ The above training is designed for 8-channel sensors, if you want to train a
 ```bash
 python3 ./train_vq.py \
   --config_path=<path_to_config_file> \
-  --dataset_name=$DATASET_NAME \
+  --dataset_name_or_path=$DATASET_NAME \
   --output_dir=$OUTPUT_DIR \
   --train_batch_size=128 \
   --num_train_epochs=150 \
@@ -118,7 +118,7 @@ The [CLIP Model](https://github.com/openai/CLIP) needs to be finetuned to align
 python3 ./train_clip.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --tokenizer_name_or_path=$OUTPUT_DIR \
-  --dataset_name=$DATASET_NAME \
+  --dataset_name_or_path=$DATASET_NAME \
   --output_dir=$OUTPUT_DIR \
   --train_batch_size=128 \
   --num_train_epochs=30 \
@@ -139,7 +139,7 @@ accelerate launch --mixed_precision="fp16"  train_unet.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --tokenizer_name_or_path=$OUTPUT_DIR \
   --text_encoder_name_or_path=$OUTPUT_DIR \
-  --dataset_name=$DATASET_NAME \
+  --dataset_name_or_path=$DATASET_NAME \
   --output_dir=$OUTPUT_DIR \
   --train_batch_size=16 \
   --num_train_epochs=10 \

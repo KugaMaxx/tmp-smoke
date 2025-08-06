@@ -47,33 +47,35 @@ class MyDataset(datasets.GeneratorBasedBuilder):
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
                 gen_kwargs={
-                    "metadata_path": base_path / "train" / "prompt.jsonl",
-                    "images_dir": base_path,
+                    "metadata_files": list((base_path / "train").glob("*/prompt.jsonl")),
+                    "image_dirs": list((base_path / "train").glob("*")),
                 },
             ),
             datasets.SplitGenerator(
                 name=datasets.Split.VALIDATION,
                 gen_kwargs={
-                    "metadata_path": base_path / "validation" / "prompt.jsonl",
-                    "images_dir": base_path,
+                    "metadata_files": list((base_path / "validation").glob("*/prompt.jsonl")),
+                    "image_dirs": list((base_path / "validation").glob("*")),
                 },
             ),
         ]
 
-    def _generate_examples(self, metadata_path, images_dir):
-        metadata = pd.read_json(metadata_path, lines=True)
+    def _generate_examples(self, metadata_files, image_dirs):
+        for metadata_file, image_dir in zip(metadata_files, image_dirs):
+            # Read the metadata file
+            metadata = pd.read_json(metadata_file, lines=True)
 
-        for _, row in metadata.iterrows():
-            text = row["text"]
+            for _, row in metadata.iterrows():
+                text = row["text"]
 
-            image_path = row["image"]
-            image_path = os.path.join(images_dir, image_path)
-            image = open(image_path, "rb").read()
+                image_path = row["image"]
+                image_path = os.path.join(image_dir, image_path)
+                image = open(image_path, "rb").read()
 
-            yield row["image"], {
-                "text": text,
-                "image": {
-                    "path": image_path,
-                    "bytes": image,
+                yield row["image"], {
+                    "text": text,
+                    "image": {
+                        "path": image_path,
+                        "bytes": image,
+                    }
                 }
-            }

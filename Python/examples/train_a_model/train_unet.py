@@ -103,24 +103,11 @@ def parse_args():
 
     # dataset
     parser.add_argument(
-        "--dataset_name",
+        '--dataset_name_or_path',
         type=str,
         default=None,
-        help=(
-            "The name of the Dataset (from the HuggingFace hub) to train on (could be your own, possibly private,"
-            " dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,"
-            " or to a folder containing files that 🤗 Datasets can understand."
-        ),
-    )
-    parser.add_argument(
-        "--dataset_dir",
-        type=str,
-        default=None,
-        help=(
-            "A folder containing the training data. Folder contents must follow the structure described in"
-            " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
-            " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
-        ),
+        required=True,
+        help="Path to dataset or dataset identifier from huggingface.co/datasets.",
     )
     parser.add_argument(
         "--dataset_config_name",
@@ -393,11 +380,6 @@ def parse_args():
         args.local_rank = env_local_rank
 
     # arguments checks
-    if args.dataset_name is None and args.dataset_dir is None:
-        raise ValueError("Need either a dataset name or a training folder.")
-    elif args.dataset_name is not None and args.dataset_dir is not None:
-        raise ValueError("You cannot set both --dataset_name and --dataset_dir at the same time; only one can be set.")
-
     if args.report_to == "wandb":
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
@@ -464,20 +446,12 @@ def prepare_accelerator(args):
 
 def prepare_dataset(args, tokenizer, accelerator):
     # Get the datasets
-    if args.dataset_name is not None:
-        dataset = load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            cache_dir=args.cache_dir,
-            trust_remote_code=args.trust_remote_code
-        )
-    elif args.dataset_dir is not None:
-        dataset = load_dataset(
-            args.dataset_dir,
-            data_dir=args.dataset_dir,
-            cache_dir=args.cache_dir,
-            trust_remote_code=args.trust_remote_code
-        )
+    dataset = load_dataset(
+        args.dataset_name_or_path,
+        args.dataset_config_name,
+        cache_dir=args.cache_dir,
+        trust_remote_code=args.trust_remote_code
+    )
 
     # Check column
     if args.image_column is None or args.image_column not in dataset['train'].column_names:

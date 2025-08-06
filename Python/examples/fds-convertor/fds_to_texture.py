@@ -173,6 +173,12 @@ def process_single_case(case_info):
             "image": f"{split_type}/{image_path.stem}/{image_name}",
             "text": ";".join([",".join([f"{val:.3f}" for val in row]) for row in history_devc.T.values])
         })
+
+    with open(f"{image_path / 'prompt.jsonl'}", 'w') as f:
+        for caption in captions:
+            caption['image'] = caption['image'].split('/')[-1]
+            json.dump(caption, f)
+            f.write("\n")
     
     return captions
 
@@ -325,20 +331,11 @@ if __name__ == '__main__':
     train_cases = list(sorted((args.input_fds_dir / 'train').glob('*')))
     train_captions = process_cases_parallel(args, train_cases, dataset_train_path, 'train')
 
-    with open(f"{dataset_train_path / 'prompt.jsonl'}", 'w') as f:
-        for caption in train_captions:
-            json.dump(caption, f)
-            f.write("\n")
 
     # make validation subfolder
     print("Making validation subfolder...")
     validation_cases = list(sorted((args.input_fds_dir / 'validation').glob('*')))
     validation_captions = process_cases_parallel(args, validation_cases, dataset_validation_path, 'validation')
-
-    with open(f"{dataset_validation_path / 'prompt.jsonl'}", 'w') as f:
-        for caption in validation_captions:
-            json.dump(caption, f)
-            f.write("\n")
 
     # generate huggingface dataset format
     os.system("cp "
