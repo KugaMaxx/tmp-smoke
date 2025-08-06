@@ -174,7 +174,7 @@ def process_single_case(case_info):
             "text": ";".join([",".join([f"{val:.3f}" for val in row]) for row in history_devc.T.values])
         })
 
-    with open(f"{image_path / 'prompt.jsonl'}", 'w') as f:
+    with open(f"{image_path / (case_name + '.jsonl')}", 'w') as f:
         for caption in captions:
             caption['image'] = caption['image'].split('/')[-1]
             json.dump(caption, f)
