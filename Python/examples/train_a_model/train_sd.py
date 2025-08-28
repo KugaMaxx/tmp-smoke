@@ -449,8 +449,7 @@ def prepare_dataset(args, tokenizer, accelerator):
     dataset = load_dataset(
         args.dataset_name_or_path,
         args.dataset_config_name,
-        cache_dir=args.cache_dir,
-        trust_remote_code=args.trust_remote_code
+        cache_dir=args.cache_dir
     )
 
     # Check column
@@ -629,13 +628,23 @@ if __name__ == "__main__":
 
     # Initialize pretrained unet and vae
     vae = AutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="vae",
+        revision=args.revision,
+        variant=args.variant,
+        trust_remote_code=args.trust_remote_code,
     )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="unet",
+        revision=args.revision,
+        variant=args.variant,
+        trust_remote_code=args.trust_remote_code,
     )
     noise_scheduler = DDPMScheduler.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="scheduler"
+        args.pretrained_model_name_or_path,
+        subfolder="scheduler",
+        trust_remote_code=args.trust_remote_code,
     )
 
     # Initialize finetuned text encoder and tokenizer

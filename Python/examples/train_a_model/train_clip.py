@@ -263,8 +263,7 @@ def prepare_dataset(args, tokenizer):
     dataset = load_dataset(
         args.dataset_name_or_path,
         args.dataset_config_name,
-        cache_dir=args.cache_dir,
-        trust_remote_code=args.trust_remote_code
+        cache_dir=args.cache_dir
     )
 
     # Check if the dataset has the required columns

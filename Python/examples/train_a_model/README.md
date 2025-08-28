@@ -89,7 +89,7 @@ python3 ./train_vq.py \
   --train_batch_size=512 \
   --num_train_epochs=300 \
   --learning_rate=1e-4 \
-  --validation_ids=[500, 1500, 2500] \
+  --validation_ids 500 1500 2500 \
   --trust_remote_code
 ```
 
@@ -105,7 +105,7 @@ python3 ./train_vq.py \
   --train_batch_size=512 \
   --num_train_epochs=300 \
   --learning_rate=1e-4 \
-  --validation_ids=[500, 1500, 2500] \
+  --validation_ids 500 1500 2500 \
   --trust_remote_code
 ```
 
@@ -124,7 +124,7 @@ python3 ./train_clip.py \
   --num_train_epochs=30 \
   --learning_rate=5e-5 \
   --freeze_vision_model \
-  --validation_ids=[500, 1500, 2500] \
+  --validation_ids 500 1500 2500 \
   --trust_remote_code
 ```
 
@@ -144,9 +144,9 @@ accelerate launch --mixed_precision="fp16"  train_sd.py \
   --train_batch_size=16 \
   --num_train_epochs=10 \
   --learning_rate=1e-5 \
-  --validation_ids=[500, 1500, 2500] \
   --gradient_checkpointing \
-  --gradient_accumulation_steps=4
+  --gradient_accumulation_steps=4 \
+  --validation_ids 500 1500 2500 \
   --trust_remote_code
 ```
 
