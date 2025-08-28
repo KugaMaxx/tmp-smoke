@@ -86,9 +86,9 @@ python3 ./train_vq.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name_or_path=$DATASET_NAME \
   --output_dir=$OUTPUT_DIR \
-  --train_batch_size=128 \
-  --num_train_epochs=150 \
-  --learning_rate=1e-5 \
+  --train_batch_size=512 \
+  --num_train_epochs=300 \
+  --learning_rate=1e-4 \
   --validation_ids=[500, 1500, 2500] \
   --trust_remote_code
 ```
@@ -102,9 +102,9 @@ python3 ./train_vq.py \
   --config_path=<path_to_config_file> \
   --dataset_name_or_path=$DATASET_NAME \
   --output_dir=$OUTPUT_DIR \
-  --train_batch_size=128 \
-  --num_train_epochs=150 \
-  --learning_rate=1e-5 \
+  --train_batch_size=512 \
+  --num_train_epochs=300 \
+  --learning_rate=1e-4 \
   --validation_ids=[500, 1500, 2500] \
   --trust_remote_code
 ```
@@ -135,7 +135,7 @@ Finetune a text-to-image Stable Diffusion model based on the
 [stable-diffusion-v1-5](https://huggingface.co/CompVis/stable-diffusion-v1-5):
 
 ```bash
-accelerate launch --mixed_precision="fp16"  train_unet.py \
+accelerate launch --mixed_precision="fp16"  train_sd.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --tokenizer_name_or_path=$OUTPUT_DIR \
   --text_encoder_name_or_path=$OUTPUT_DIR \

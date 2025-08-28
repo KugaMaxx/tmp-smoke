@@ -155,15 +155,15 @@ This script will process the FDS data and generate images from the `.q` files,
 <your_dataset>
 ├── <your_dataset>.py
 ├── train
-│   ├── prompt.jsonl
 │   ├── <case_1>_h1000
+│   │   ├── <case_1>_h1000.jsonl
 │   │   ├── ...
 │   │   ├── xxx.png
 │   │   └── xxx.png
 │   ├── ...
 └── validation
-    ├── prompt.jsonl
     ├── <case_1>_<random_hrr>
+    │   ├── <case_1>_<random_hrr>.jsonl
     │   ├── ...
     │   ├── xxx.png
     │   └── xxx.png

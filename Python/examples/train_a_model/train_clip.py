@@ -615,7 +615,7 @@ if __name__ == "__main__":
         )
 
         # Report the average loss to
-        writer.add_scalar("train/loss", avg_loss, epoch)
+        writer.add_scalar("train/clip_loss", avg_loss, epoch)
 
     # Final validation
     log_validation(args, model, dataloader, global_step, writer)

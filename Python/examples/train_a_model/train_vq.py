@@ -211,9 +211,9 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--lr_warmup_steps", 
-        type=int, 
-        default=0, 
+        "--lr_warmup_steps",
+        type=int,
+        default=0,
         help="Number of steps for the warmup in the lr scheduler."
     )
 
@@ -537,7 +537,7 @@ if __name__ == "__main__":
         )
 
         # Report the average loss to
-        writer.add_scalar("train/loss", avg_loss, epoch)
+        writer.add_scalar("train/vq_loss", avg_loss, epoch)
 
     # Final validation
     log_validation(args, tokenizer, dataloader, global_step, writer)

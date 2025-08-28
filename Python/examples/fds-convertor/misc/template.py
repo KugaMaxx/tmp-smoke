@@ -14,7 +14,7 @@ _VERSION = datasets.Version("1.0.0")
 _DESCRIPTION = "Dataset for AIoT-based smoke reconstruction."
 _HOMEPAGE = "https://github.com/KugaMaxx"
 _LICENSE = "MIT LICENSE"
-_CITATION = "TODO"
+_CITATION = "NONE"
 
 _FEATURES = datasets.Features(
     {
@@ -26,7 +26,7 @@ _FEATURES = datasets.Features(
 _DEFAULT_CONFIG = datasets.BuilderConfig(name="default", version=_VERSION)
 
 
-class MyDataset(datasets.GeneratorBasedBuilder):
+class CustomDataset(datasets.GeneratorBasedBuilder):
     BUILDER_CONFIGS = [_DEFAULT_CONFIG]
     DEFAULT_CONFIG_NAME = "default"
 
@@ -47,14 +47,14 @@ class MyDataset(datasets.GeneratorBasedBuilder):
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
                 gen_kwargs={
-                    "metadata_files": list((base_path / "train").glob("*/prompt.jsonl")),
+                    "metadata_files": list((base_path / "train").glob("*/*.jsonl")),
                     "image_dirs": list((base_path / "train").glob("*")),
                 },
             ),
             datasets.SplitGenerator(
                 name=datasets.Split.VALIDATION,
                 gen_kwargs={
-                    "metadata_files": list((base_path / "validation").glob("*/prompt.jsonl")),
+                    "metadata_files": list((base_path / "validation").glob("*/*.jsonl")),
                     "image_dirs": list((base_path / "validation").glob("*")),
                 },
             ),

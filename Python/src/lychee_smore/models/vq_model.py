@@ -22,7 +22,7 @@ from transformers.modeling_utils import PreTrainedModel, PretrainedConfig
 class VectorQuantizer(nn.Module):
     """Vector Quantization layer for VQ-VAE"""
 
-    def __init__(self, num_embeddings: int, embedding_dim: int, commitment_cost: float = 0.25, ema_decay: float = 0.99):
+    def __init__(self, num_embeddings: int, embedding_dim: int, commitment_cost: float = 0.25, decay: float = 0.99):
         super().__init__()
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
@@ -30,15 +30,11 @@ class VectorQuantizer(nn.Module):
 
         # Initialize embedding table
         self.embedding = nn.Embedding(num_embeddings, embedding_dim)
-        self.embedding.weight.data.normal_()
-        # self.embedding.weight.data.uniform_(-1/num_embeddings, 1/num_embeddings)
+        self.embedding.weight.data.uniform_(-1/num_embeddings, 1/num_embeddings)
 
-        # EMA parameters
-        self.ema_decay = ema_decay
-        self.register_buffer('ema_cluster_size', torch.zeros(num_embeddings))
-        self.register_buffer('ema_w', torch.zeros(num_embeddings, embedding_dim))
-        # self.ema_w.data.copy_(self.embedding.weight.data)
-        self.ema_w.data.normal_()
+        # Update parameters
+        self.decay = decay
+        self.register_buffer("embed_prob", torch.zeros(self.num_embeddings))
 
     def forward(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
@@ -56,32 +52,19 @@ class VectorQuantizer(nn.Module):
         # Flatten input
         flat_input = inputs.view(-1, self.embedding_dim)
         
-        # Calculate distances between input and embedding vectors
-        distances = (torch.sum(flat_input**2, dim=1, keepdim=True) 
-                    + torch.sum(self.embedding.weight**2, dim=1)
-                    - 2 * torch.matmul(flat_input, self.embedding.weight.t()))
+        # Calculate cosine distances between input and embedding vectors
+        # Normalize input and embedding vectors
+        flat_input_norm = F.normalize(flat_input, p=2, dim=1)
+        embedding_norm = F.normalize(self.embedding.weight, p=2, dim=1)
+        
+        # Calculate cosine similarity and convert to distance
+        cosine_sim = torch.matmul(flat_input_norm, embedding_norm.t())
+        distances = 1 - cosine_sim
         
         # Find closest embedding
         encoding_indices = torch.argmin(distances, dim=1).unsqueeze(1)
         encodings = torch.zeros(encoding_indices.shape[0], self.num_embeddings, device=inputs.device)
         encodings.scatter_(1, encoding_indices, 1)
-
-        # Use EMA to update the embedding vectors
-        if self.training:
-            with torch.no_grad():
-                # Update EMA cluster size
-                self.ema_cluster_size = self.ema_cluster_size * self.ema_decay + \
-                                    (1 - self.ema_decay) * torch.sum(encodings, 0)
-
-                # Update EMA weights
-                dw = torch.matmul(encodings.t(), flat_input)
-                self.ema_w = self.ema_w * self.ema_decay + (1 - self.ema_decay) * dw
-
-                # Normalize and update embedding weights
-                n = torch.sum(self.ema_cluster_size)
-                self.ema_cluster_size = (self.ema_cluster_size + 1e-5) / (n + self.num_embeddings * 1e-5) * n
-
-                self.embedding.weight = nn.Parameter(self.ema_w / self.ema_cluster_size.unsqueeze(1))
 
         # Quantize and unflatten
         quantized = torch.matmul(encodings, self.embedding.weight).view(input_shape)
@@ -100,6 +83,29 @@ class VectorQuantizer(nn.Module):
         
         # Convert back to (batch_size, embedding_dim, sequence_length)
         quantized = quantized.permute(0, 2, 1).contiguous()
+
+        # Use clustering average updates to update the embedding vectors
+        # which can help avoid dead codes, please refer to the paper:
+        # https://arxiv.org/abs/2307.15139
+        if self.training:
+            # Update the embedding probabilities
+            self.embed_prob.mul_(self.decay).add_(avg_probs, alpha= 1 - self.decay)
+            # same as
+            # self.embed_prob = self.embed_prob * self.decay + avg_probs * (1 - self.decay)
+
+            # Closest sampling
+            sort_distance, indices = distances.sort(dim=0)
+            random_feat = flat_input.detach()[indices[-1,:]]
+
+            # Calculate decay factor
+            decay = torch.exp(
+                -(self.embed_prob * self.num_embeddings * 10) / (1 - self.decay) - 1e-3
+            ).unsqueeze(1).repeat(1, self.embedding_dim)
+
+            # Update the embedding weights using Clustering Average
+            self.embedding.weight.data = (
+                self.embedding.weight.data * (1 - decay) + random_feat * decay
+            )
         
         return quantized, loss, perplexity
 

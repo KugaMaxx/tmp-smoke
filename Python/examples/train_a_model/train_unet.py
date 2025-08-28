@@ -271,7 +271,7 @@ def parse_args():
     )
     parser.add_argument(
         "--gradient_checkpointing",
-        action="store_false",
+        action="store_true",
         help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
     parser.add_argument(
@@ -849,7 +849,7 @@ if __name__ == "__main__":
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
+                accelerator.log({"train/sd_loss": train_loss}, step=global_step)
                 train_loss = 0.0
 
             if accelerator.is_main_process:

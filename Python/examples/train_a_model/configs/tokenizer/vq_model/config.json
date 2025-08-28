@@ -3,7 +3,7 @@
     "VQModel"
   ],
   "commitment_cost": 0.25,
-  "ema_decay": 0.99,
+  "decay": 0.99,
   "hidden_dims": [
     64,
     128
