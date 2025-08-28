@@ -161,7 +161,7 @@ def parse_args():
     # validation
     parser.add_argument(
         "--validation_ids",
-        type=str,
+        type=int,
         default=None,
         nargs="*",
         help=("A set of validation data evaluated every `--validation_steps`."),
