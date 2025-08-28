@@ -272,7 +272,7 @@ def prepare_dataset(args):
 
 def save_checkpoint(args, tokenizer, optimizer, lr_scheduler, global_step):
     # If no checkpoints are to be saved, return
-    if args.checkpoints_total_limit <= 0:
+    if args.checkpoints_total_limit is not None and args.checkpoints_total_limit <= 0:
         return
 
     # Delete checkpoint if total checkpoints exceed limit
