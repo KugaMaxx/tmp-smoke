@@ -198,7 +198,7 @@ def parse_args():
     parser.add_argument(
         "--tracker_project_name",
         type=str,
-        default="unet-training",
+        default="sd-training",
         help=(
             "The `project_name` argument passed to logging tracker"
         ),
