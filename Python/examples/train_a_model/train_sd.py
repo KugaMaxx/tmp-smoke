@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 #
 # This script is a variant of Text-to-image from diffusers. You may find more
-# details at 
+# details at
 #
 #   https://github.com/huggingface/diffusers/tree/main/examples/text_to_image
 #
 # Unlike the source code, the time-series sensor data will be tokenized by the
-# pretrained VQ-VAE, and the CLIP model is also pretrained to align with the 
+# pretrained VQ-VAE, and the CLIP model is also pretrained to align with the
 # modified tokenizer. The training process is similar to the original one, but
 # some irrelevant codes have been deleted for simplification.
 
