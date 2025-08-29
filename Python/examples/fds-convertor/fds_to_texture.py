@@ -360,10 +360,10 @@ data_files:
   path: "validation/*/*.parquet"
 dataset_info:
   features:
+  - name: case
+    dtype: string
   - name: image
     dtype: image
-  - name: case
-    dtype: string          
   - name: text
     dtype: string
 ---
