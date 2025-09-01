@@ -24,7 +24,7 @@ from datasets import load_dataset
 from transformers import set_seed
 from transformers.optimization import get_scheduler
 
-from lychee_smore import VQTokenizer
+from lychee_smore import VQTokenizer, VQModel, VQConfig
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ def parse_args():
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
-        "--config_path",
+        "--model_config_path",
         type=str,
         default=None,
         help="Path to the configuration file. The model will be initialized with this config if provided.",
@@ -417,14 +417,12 @@ if __name__ == "__main__":
             cache_dir=args.cache_dir,
             trust_remote_code=args.trust_remote_code
         )
-    elif args.config_path is not None:
-        tokenizer = VQTokenizer.from_config(
-            args.config_path,
-            cache_dir=args.cache_dir,
-            trust_remote_code=args.trust_remote_code
-        )
+    elif args.model_config_path is not None:
+        vq_config = VQConfig.from_json_file(args.model_config_path)
+        vq_model = VQModel(vq_config)
+        tokenizer = VQTokenizer(vq_model=vq_model)
     else:
-        raise ValueError("Either `--pretrained_model_name_or_path` or `--config_path` must be provided.")
+        raise ValueError("Either `--pretrained_model_name_or_path` or `--model_config_path` must be provided.")
     
     # Log information
     logger.info(f"Training Arguments: \n {'\n '.join([f'{arg}: {value}' for arg, value in vars(args).items()])} \n")

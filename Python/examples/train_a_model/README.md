@@ -99,7 +99,7 @@ The above training is designed for 8-channel sensors, if you want to train a
 
 ```bash
 python3 ./train_vq.py \
-  --config_path=<path_to_config_file> \
+  --model_config_path=<path_to_config_file> \
   --dataset_name_or_path=$DATASET_NAME \
   --output_dir=$OUTPUT_DIR \
   --train_batch_size=512 \
