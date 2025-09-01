@@ -1,3 +1,4 @@
+import json
 import argparse
 import numpy as np
 from tqdm import tqdm
@@ -5,7 +6,6 @@ from PIL import Image
 from pathlib import Path
 
 import torch
-from torch.utils.data import Subset
 from datasets import load_dataset
 from diffusers import StableDiffusionPipeline
 
@@ -52,7 +52,7 @@ def texture_to_volume(texture, num_rows, num_cols):
     # Convert from uint8 [0, 255] to float32 [0, 1] to match original data range
     volume = volume.astype(np.float32) / 255.0
     
-    return volume 
+    return volume
 
 
 if __name__ == '__main__':
@@ -88,45 +88,9 @@ if __name__ == '__main__':
         help="Directory containing the dataset.",
     )
     parser.add_argument(
-        "--partition",
-        default="validation",
-        type=str,
-        help="Partition of the dataset to use (e.g., 'train', 'validation').",
-    )
-    parser.add_argument(
         "--trust_remote_code",
         action="store_true",
         help="Whether to trust remote code when loading the dataset.",
-    )
-    parser.add_argument(
-        "--start_index",
-        default=0,
-        type=int,
-        help="Starting index for the dataset.",
-    )
-    parser.add_argument(
-        "--end_index",
-        default=None,
-        type=int,
-        help="Ending index for the dataset. If None, will use the entire dataset.",
-    )
-    parser.add_argument(
-        "--step_index",
-        default=1,
-        type=int,
-        help="Step index for the dataset. Used to skip samples.",
-    )
-
-    # export
-    parser.add_argument(
-        "--export_png",
-        action="store_true",
-        help="Whether to export the results as a series of images and a GIF.",
-    )
-    parser.add_argument(
-        "--export_vdb",
-        action="store_true",
-        help="Whether to export the results as a series of OpenVDB data.",
     )
 
     # others
@@ -178,16 +142,7 @@ if __name__ == '__main__':
     dataset = load_dataset(
         args.dataset_name_or_path,
         cache_dir=args.cache_dir,
-        trust_remote_code=args.trust_remote_code
-    )[args.partition]
-
-    dataset = Subset(
-        dataset,
-        list(
-            range(args.start_index, len(dataset), args.step_index)
-            if args.end_index is None
-            else range(args.start_index, args.end_index, args.step_index)
-        ),
+        split='train',
     )
 
     # Create a DataLoader for the dataset
@@ -195,6 +150,7 @@ if __name__ == '__main__':
         dataset,
         shuffle=False,
         collate_fn=lambda batch: {
+            "case": [item['case'] for item in batch],
             "pixel_values": [item['image'].convert('RGB') for item in batch],
             "texts": [item['text'] for item in batch]
         },
@@ -224,44 +180,53 @@ if __name__ == '__main__':
         gt_volume = texture_to_volume(gt_texture, args.num_rows, args.num_cols)
         pred_volume = texture_to_volume(pred_texture, args.num_rows, args.num_cols)
 
-        # Set up the scalars
-        if args.export_png:
-            # Define the image path
-            image_path = Path(args.output_dir) / "images" / f"frame_{i:03d}.png"
-            image_path.parent.mkdir(parents=True, exist_ok=True)
+        # === Export image ===
+        # Define the image path
+        image_path = Path(args.output_dir) / "images" / f"frame_{i:06d}.png"
+        image_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Create a grid
-            grid = pv.ImageData(dimensions=gt_volume.shape)
-            opacity = pred_volume.transpose(2, 1, 0).flatten().reshape(-1, 1)
-            scalars = np.zeros_like(grid.points)
-            if np.all(opacity == 0): opacity[0] = 1.0  # in case of empty volume
-            scalars = 255 * np.hstack((scalars, opacity))
+        # Create a grid
+        grid = pv.ImageData(dimensions=gt_volume.shape)
+        opacity = gt_volume.transpose(2, 1, 0).flatten().reshape(-1, 1) / 10
+        scalars = np.zeros_like(grid.points)
+        if np.all(opacity == 0): opacity[0] = 1.0  # in case of empty volume
+        scalars = 255 * np.hstack((scalars, opacity))
 
-            # Volume rendering
-            plotter.add_volume(grid, scalars=scalars.astype(np.uint8), cmap='gray', opacity='linear')
-            plotter.screenshot(image_path)
-            plotter.clear_actors()
+        # Volume rendering
+        plotter.add_volume(grid, scalars=scalars.astype(np.uint8), cmap='gray', opacity='linear')
+        plotter.add_text(str(i), position='upper_left', font_size=20, color='black')
+        plotter.screenshot(image_path)
+        plotter.clear_actors()
 
-            # Append the image to frames
-            frames.append(Image.open(image_path))
+        # Append the image to frames
+        frames.append(Image.open(image_path))
 
-        if args.export_vdb:
-            # Define the VDB path
-            vdb_path = Path(args.output_dir) / "vdb" / f"smoke_{i:03d}.vdb"
-            vdb_path.parent.mkdir(parents=True, exist_ok=True)
+        # === Export VDB ===
+        # Define the VDB path
+        vdb_path = Path(args.output_dir) / "vdb" / f"smoke_{i:06d}.vdb"
+        vdb_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Create an OpenVDB grid from the volume data
-            grid = openvdb.FloatGrid()
-            grid.name = "opacity"
+        # Create an OpenVDB grid from the volume data
+        grid = openvdb.FloatGrid()
+        grid.name = "opacity"
 
-            # OpenVDB expects (z, y, x) order, so ensure gt_volume is in that order
-            # gt_volume is (height, width, depth), so we need to transpose to (depth, height, width)
-            od = gt_volume
-            opacity = 1 - 10 ** -od
-            grid.copyFromArray(opacity)
+        # OpenVDB expects (z, y, x) order, so ensure gt_volume is in that order
+        # gt_volume is (height, width, depth), so we need to transpose to (depth, height, width)
+        od = gt_volume
+        opacity = 1 - 10 ** -od
+        grid.copyFromArray(opacity)
 
-            # Write the grid to a VDB file
-            openvdb.write(str(vdb_path), [grid])
+        # Write the grid to a VDB file
+        openvdb.write(str(vdb_path), [grid])
+
+        # === Export JSON ===
+        # Define the JSON path
+        json_path = Path(args.output_dir) / "sensors" / f"data_{i:06d}.json"
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write the chart data to JSON file
+        with open(json_path, 'w') as f:
+            json.dump({'data': batch["texts"][0]}, f, indent=2)
 
     # Save the frames as a GIF
     print("Saving animation...")

@@ -660,6 +660,10 @@ if __name__ == "__main__":
     text_encoder.requires_grad_(False)
     unet.train()
 
+    # Log information
+    logger.info(f"Training Arguments: \n {'\n '.join([f'{arg}: {value}' for arg, value in vars(args).items()])} \n")
+    logger.info(f"Unet Model Config: \n {unet.config}")
+
     # For mixed precision training we cast all non-trainable weights to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
