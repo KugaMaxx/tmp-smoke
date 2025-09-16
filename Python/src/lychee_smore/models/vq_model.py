@@ -197,7 +197,7 @@ class VQConfig(PretrainedConfig):
         latent_dim: int = 64,
         num_embeddings: int = 512,
         commitment_cost: float = 0.25,
-        ema_decay: float = 0.99,
+        decay: float = 0.99,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -208,7 +208,7 @@ class VQConfig(PretrainedConfig):
         self.latent_dim = latent_dim
         self.num_embeddings = num_embeddings
         self.commitment_cost = commitment_cost
-        self.ema_decay = ema_decay
+        self.decay = decay
 
 
 class VQModel(PreTrainedModel):
@@ -227,14 +227,14 @@ class VQModel(PreTrainedModel):
         self.latent_dim = config.latent_dim
         self.num_embeddings = config.num_embeddings
         self.commitment_cost = config.commitment_cost
-        self.ema_decay = config.ema_decay
+        self.decay = config.decay
         
         # Build encoder and decoder
         self.encoder = Encoder1D(self.in_channels, self.hidden_dims, self.latent_dim)
         self.decoder = Decoder1D(self.latent_dim, self.hidden_dims, self.out_channels)
         
         # Vector quantizer
-        self.vq_layer = VectorQuantizer(self.num_embeddings, self.latent_dim, self.commitment_cost, self.ema_decay)
+        self.vq_layer = VectorQuantizer(self.num_embeddings, self.latent_dim, self.commitment_cost, self.decay)
         
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         """Encode input to latent space"""

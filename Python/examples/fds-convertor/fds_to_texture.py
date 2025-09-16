@@ -105,7 +105,7 @@ def plot3d_to_flipbook(
 
     # Convert to a 2D image
     image_data = np.clip(plot3d_data[args.selected_quantity], args.min_value, args.max_value)
-    image_data = (image_data * 255.0).astype(np.uint8)
+    image_data = ((image_data - args.min_value) / (args.max_value - args.min_value) * 255.0).astype(np.uint8)
 
     # padding images
     images = [image_data[:, :, i] for i in range(NZP)]
@@ -177,7 +177,11 @@ def process_single_case(case_info):
         captions.append({
             'case': f"{case_name}_{seconds:05d}p{milliseconds:02d}",
             'image': {'bytes': img_buffer.getvalue()},
-            'text': "; ".join([", ".join([f"{val:07.2f}" for val in row]) for row in history_devc.T.values])
+            'text': "; ".join([", ".join([f"{val:07.2f}" for val in row]) for row in history_devc.T.values]),
+            'min_value': args.min_value,
+            'max_value': args.max_value,
+            'num_rows': args.num_rows,
+            'num_cols': args.num_cols
         })
 
     # Save as parquet format
@@ -186,9 +190,13 @@ def process_single_case(case_info):
     dataset = datasets.Dataset.from_list(
         captions,
         features=datasets.Features({
-            "image": datasets.Image(),
-            "case": datasets.Value("string"),
-            "text": datasets.Value("string"),
+            'image': datasets.Image(),
+            'case': datasets.Value("string"),
+            'text': datasets.Value("string"),
+            'min_value': datasets.Value("float32"),
+            'max_value': datasets.Value("float32"),
+            'num_rows': datasets.Value("int32"),
+            'num_cols': datasets.Value("int32"),
         }),
     )
     dataset.to_parquet(output_path / f'{output_path.stem}.parquet')

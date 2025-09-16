@@ -13,7 +13,7 @@ import openvdb
 import pyvista as pv
 
 
-def texture_to_volume(texture, num_rows, num_cols):
+def texture_to_volume(texture, min_value, max_value, num_rows, num_cols):
     """
     Convert a texture image to a 3D volume representation.
     """
@@ -49,8 +49,9 @@ def texture_to_volume(texture, num_rows, num_cols):
     # Stack slices to form 3D volume [height, width, depth]
     volume = np.stack(slices, axis=2)
     
-    # Convert from uint8 [0, 255] to float32 [0, 1] to match original data range
+    # Convert to match original data range
     volume = volume.astype(np.float32) / 255.0
+    volume = volume * (max_value - min_value) + min_value
     
     return volume
 
@@ -115,12 +116,6 @@ if __name__ == '__main__':
         "--seed", default=42, type=int, help="Random seed for reproducibility."
     )
     parser.add_argument(
-        "--num_rows", default=2, type=int, help="Number of rows in the output grid."
-    )
-    parser.add_argument(
-        "--num_cols", default=15, type=int, help="Number of columns in the output grid."
-    )
-    parser.add_argument(
         "--device",
         default="cuda",
         type=str,
@@ -150,9 +145,13 @@ if __name__ == '__main__':
         dataset,
         shuffle=False,
         collate_fn=lambda batch: {
-            "case": [item['case'] for item in batch],
-            "pixel_values": [item['image'].convert('RGB') for item in batch],
-            "texts": [item['text'] for item in batch]
+            'case': [item['case'] for item in batch],
+            'pixel_values': [item['image'].convert('RGB') for item in batch],
+            'texts': [item['text'] for item in batch],
+            'num_rows': [item['num_rows'] for item in batch],
+            'num_cols': [item['num_cols'] for item in batch],
+            'min_value': [item['min_value'] for item in batch],
+            'max_value': [item['max_value'] for item in batch],
         },
         batch_size=1
     )
@@ -177,8 +176,20 @@ if __name__ == '__main__':
         pred_texture = pred_texture.resize(gt_texture.size)
 
         # Convert textures to volumes
-        gt_volume = texture_to_volume(gt_texture, args.num_rows, args.num_cols)
-        pred_volume = texture_to_volume(pred_texture, args.num_rows, args.num_cols)
+        gt_volume = texture_to_volume(
+            gt_texture,
+            batch["min_value"],
+            batch["max_value"],
+            batch["num_rows"],
+            batch["num_cols"],
+        )
+        pred_volume = texture_to_volume(
+            pred_texture,
+            batch["min_value"],
+            batch["max_value"],
+            batch["num_rows"],
+            batch["num_cols"],
+        )
 
         # === Export image ===
         # Define the image path

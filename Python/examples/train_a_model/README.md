@@ -142,7 +142,7 @@ accelerate launch --mixed_precision="fp16"  train_sd.py \
   --dataset_name_or_path=$DATASET_NAME \
   --output_dir=$OUTPUT_DIR \
   --train_batch_size=16 \
-  --num_train_epochs=10 \
+  --num_train_epochs=3 \
   --learning_rate=1e-5 \
   --gradient_checkpointing \
   --gradient_accumulation_steps=4 \
