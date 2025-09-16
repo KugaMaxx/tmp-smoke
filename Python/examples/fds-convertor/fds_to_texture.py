@@ -374,6 +374,14 @@ dataset_info:
     dtype: image
   - name: text
     dtype: string
+  - name: min_value
+    dtype: float32
+  - name: max_value
+    dtype: float32
+  - name: num_rows
+    dtype: int32
+  - name: num_cols
+    dtype: int32
 ---
 # {args.output_dataset_dir.name}
 

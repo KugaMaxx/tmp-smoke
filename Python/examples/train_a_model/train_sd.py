@@ -255,7 +255,7 @@ def parse_args():
     parser.add_argument(
         "--num_train_epochs",
         type=int, 
-        default=10
+        default=3
     )
     parser.add_argument(
         "--max_train_steps",

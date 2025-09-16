@@ -185,7 +185,7 @@ def parse_args():
     parser.add_argument(
         "--train_batch_size",
         type=int,
-        default=256,
+        default=512,
         help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument(
@@ -198,7 +198,7 @@ def parse_args():
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=1e-5,
+        default=1e-4,
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
