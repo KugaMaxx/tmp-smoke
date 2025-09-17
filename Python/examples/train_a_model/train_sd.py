@@ -890,6 +890,12 @@ if __name__ == "__main__":
 
             if global_step >= args.max_train_steps:
                 break
+        
+        if accelerator.is_main_process:
+            logger.info(
+                f"Epoch {epoch:3d} | "
+                f"Global Step {global_step:4d}"
+            )
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
@@ -916,5 +922,7 @@ if __name__ == "__main__":
 
         # Run a final round of validation.
         log_validation(args, pipeline, accelerator, dataloader, global_step, is_final_validation=True)
+
+        logger.info(f"Finished!")
 
     accelerator.end_training()

@@ -541,3 +541,5 @@ if __name__ == "__main__":
 
     # Save the final model
     tokenizer.save_pretrained(Path(args.output_dir) / "tokenizer")
+
+    logger.info(f"Finished!")

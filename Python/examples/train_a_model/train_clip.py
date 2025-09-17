@@ -629,3 +629,5 @@ if __name__ == "__main__":
     vision_model = CLIPVisionModel._from_config(model.vision_model.config)
     vision_model.vision_model = model.vision_model
     vision_model.save_pretrained(Path(args.output_dir) / "vision_encoder")
+
+    logger.info(f"Finished!")
