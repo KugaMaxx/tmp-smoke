@@ -304,13 +304,13 @@ if __name__ == '__main__':
     # flipbook parameters
     parser.add_argument(
         "--num_rows",
-        default=2,
+        default=None,
         type=int,
         help="Number of x-axis slice data in the flipbook.",
     )
     parser.add_argument(
         "--num_cols",
-        default=15,
+        default=None,
         type=int,
         help="Number of y-axis slice data in the flipbook.",
     )
