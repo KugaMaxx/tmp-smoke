@@ -447,7 +447,7 @@ if __name__ == "__main__":
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     # Setup logging
-    logging_dir = Path(args.output_dir) / args.logging_dir
+    logging_dir = Path(args.output_dir) / args.logging_dir / args.tracker_project_name
     logging_dir.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
@@ -465,7 +465,7 @@ if __name__ == "__main__":
         set_seed(args.seed)
 
     # Initialize TensorBoard writer
-    writer = SummaryWriter(log_dir=logging_dir / args.tracker_project_name)
+    writer = SummaryWriter(log_dir=logging_dir)
 
     # Initialize CLIP model
     model = CLIPModel.from_pretrained(

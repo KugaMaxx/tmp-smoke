@@ -464,7 +464,6 @@ if __name__ == "__main__":
         initial=global_step,
         desc="Steps",
     )
-    log_validation(args, model, dataloader, global_step, writer)
 
     # Train!
     logger.info("============ Training Begins ============")

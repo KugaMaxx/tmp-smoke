@@ -600,7 +600,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Make one log on every process with the configuration for debugging.
-    logging_dir = Path(args.output_dir) / args.logging_dir
+    logging_dir = Path(args.output_dir) / args.logging_dir / args.tracker_project_name
     logging_dir.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
@@ -748,7 +748,7 @@ if __name__ == "__main__":
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
         tracker_config.pop("validation_ids")
-        accelerator.init_trackers(args.tracker_project_name, tracker_config)
+        accelerator.init_trackers("")
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
