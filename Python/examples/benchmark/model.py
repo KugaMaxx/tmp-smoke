@@ -1,151 +1,292 @@
+from typing import Optional, Union, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from transformers import GPT2Tokenizer
+from transformers import PretrainedConfig, PreTrainedModel
+from transformers.modeling_outputs import BaseModelOutput
 
-class ADLSTMFire(nn.Module):
-    def __init__(self, input_features=3, lstm_hidden1=100, lstm_hidden2=10, dropout_rate=0.1):
-        super(ADLSTMFire, self).__init__()
-        
-        # LSTM layers
-        self.lstm1 = nn.LSTM(input_features, lstm_hidden1, batch_first=True, dropout=dropout_rate)
-        self.dropout1 = nn.Dropout(dropout_rate)
-        
-        self.lstm2 = nn.LSTM(lstm_hidden1, lstm_hidden2, batch_first=True, dropout=dropout_rate)
-        
-        # Dense layers with BatchNorm
-        self.dense1 = nn.Linear(lstm_hidden2, 64)
-        self.bn1 = nn.BatchNorm1d(64)
-        
-        self.dense2 = nn.Linear(64, 128)
-        self.bn2 = nn.BatchNorm1d(128)
-        
-        self.dense3 = nn.Linear(128, 256)
-        self.bn3 = nn.BatchNorm1d(256)
-        
-        # 增加中间层来缓和维度跳跃，使用更大的初始特征图
-        self.dense4 = nn.Linear(256, 512)
-        self.bn4 = nn.BatchNorm1d(512)
-        
-        # 添加额外的全连接层来增大特征图
-        self.dense5 = nn.Linear(512, 8192)  # 8192 = 32 * 16 * 16 (从16x16开始，减少上采样层数)
-        self.bn5 = nn.BatchNorm1d(8192)
-        self.dropout2 = nn.Dropout(0.2)
-        
-        # 更平滑的上采样路径，减少棋盘效应
-        # 从 32x16x16 开始，逐步上采样到 512x512x3
-        # 16x16 -> 32x32 -> 64x64 -> 128x128 -> 256x256 -> 512x512 (5层而不是6层)
-        
-        # 第一层：上采样+卷积 16x16 -> 32x32
-        self.upsample1 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.conv1 = nn.Conv2d(32, 128, kernel_size=3, stride=1, padding=1)
-        self.bn_conv1 = nn.BatchNorm2d(128)
-        
-        # 第二层：结合上采样+卷积减少棋盘效应 32x32 -> 64x64
-        self.upsample2 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.conv2 = nn.Conv2d(128, 96, kernel_size=3, stride=1, padding=1)
-        self.bn_conv2 = nn.BatchNorm2d(96)
-        self.dropout3 = nn.Dropout(dropout_rate)
-        
-        # 第三层：上采样+卷积 64x64 -> 128x128
-        self.upsample3 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.conv3 = nn.Conv2d(96, 64, kernel_size=3, stride=1, padding=1)
-        self.bn_conv3 = nn.BatchNorm2d(64)
-        
-        # 第四层：上采样+卷积 128x128 -> 256x256
-        self.upsample4 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.conv4 = nn.Conv2d(64, 48, kernel_size=3, stride=1, padding=1)
-        self.bn_conv4 = nn.BatchNorm2d(48)
-        self.dropout4 = nn.Dropout(dropout_rate)
-        
-        # 第五层：上采样+卷积 256x256 -> 512x512
-        self.upsample5 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-        self.conv5 = nn.Conv2d(48, 32, kernel_size=3, stride=1, padding=1)
-        self.bn_conv5 = nn.BatchNorm2d(32)
-        
-        # 最终输出层：直接生成3通道输出
-        self.conv_final = nn.Conv2d(32, 3, kernel_size=3, stride=1, padding=1)
-        
-        # 权重初始化
-        self._initialize_weights()
+from dalle_pytorch import OpenAIDiscreteVAE, DALLE
 
-    def _initialize_weights(self):
-        """初始化网络权重"""
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
-                # 对于LeakyReLU使用合适的初始化
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.LSTM):
-                # LSTM权重初始化
-                for name, param in m.named_parameters():
-                    if 'weight_ih' in name:
-                        nn.init.xavier_uniform_(param.data)
-                    elif 'weight_hh' in name:
-                        nn.init.orthogonal_(param.data)
-                    elif 'bias' in name:
-                        param.data.fill_(0)
-                        # 设置forget gate bias为1（LSTM常见做法）
-                        n = param.size(0)
-                        param.data[(n//4):(n//2)].fill_(1)
 
-    def forward(self, inputs, pixel_values):
-        # (batch_size, num_sensors, sequence_length) -> (batch_size, sequence_length, num_sensors)
+def prepare_model(model_name: str):
+    model_name = model_name.lower()
+
+    if model_name == "adlstm":
+        model_config = ADLSTMConfig()
+        model = ADLSTM(model_config)
+        return model
+    else:
+        raise ValueError(f"Model {model_name} not recognized.")
+    
+
+# class FieldModel(nn.Module):
+#     def __init__(self, input_size=3, lstm_hiddens=[512, 1024], num_layers=[1, 2], dropout=0.2):
+#         super().__init__()
+        
+#         # 增加LSTM的hidden_size以获得更丰富的特征表示
+#         self.lstm1 = nn.LSTM(input_size=3, hidden_size=512, num_layers=1, batch_first=True)
+#         self.lstm2 = nn.LSTM(input_size=512, hidden_size=1024, num_layers=2, batch_first=True, dropout=dropout)
+
+#         # 从32x32开始上采样，减少层数从8层到4层
+#         self.main = nn.ModuleList([
+#             # 第1层: 32x32 -> 64x64，保持较多通道数
+#             nn.Sequential(
+#             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+#             nn.Conv2d(32, 128, kernel_size=3, stride=1, padding=1, bias=False),
+#             nn.BatchNorm2d(128),
+#             nn.LeakyReLU(0.2, True),
+#             ),
+            
+#             # 第2层: 64x64 -> 128x128
+#             nn.Sequential(
+#             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+#             nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=False),
+#             nn.BatchNorm2d(64),
+#             nn.LeakyReLU(0.2, True),
+#             ),
+            
+#             # 第3层: 128x128 -> 256x256
+#             nn.Sequential(
+#             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+#             nn.Conv2d(64, 32, kernel_size=3, stride=1, padding=1, bias=False),
+#             nn.BatchNorm2d(32),
+#             nn.LeakyReLU(0.2, True),
+#             ),
+            
+#             # 第4层: 256x256 -> 512x512，最终输出层
+#             nn.Sequential(
+#             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+#             nn.Conv2d(32, 16, kernel_size=3, stride=1, padding=1, bias=False),
+#             nn.BatchNorm2d(16),
+#             nn.LeakyReLU(0.2, True),
+#             # 最终输出层：生成3通道图像
+#             nn.Conv2d(16, 3, kernel_size=5, stride=1, padding=2, bias=True),  # 使用5x5卷积进一步平滑
+#             nn.Tanh()  # 确保输出在[-1,1]范围内
+#             ),
+#         ])
+
+#     def forward(self, inputs, pixel_values):
+#         x = inputs.transpose(1, 2)  # (batch_size, sequence_length, num_sensors)
+
+#         x, _ = self.lstm1(x)  # LSTM第一层
+#         x, _ = self.lstm2(x)  # LSTM第二层
+        
+#         x = x[:, -1, :]  # 取最后一个time step的输出 (batch_size, 1024)
+        
+#         # 直接将LSTM输出reshape为特征图，不使用全连接层
+#         # 将1024维reshape为合理的特征图尺寸，例如 (32, 32) 的单通道特征图
+#         # 这里我们需要选择一个合适的初始尺寸，让1024能够整除
+#         # 1024 = 32 * 32, 所以我们可以reshape为 (1, 32, 32)
+#         x = x.view(x.size(0), 1, 32, 32)
+        
+#         # 首先扩展通道数到32通道
+#         x = F.interpolate(x.repeat(1, 32, 1, 1), size=(32, 32), mode='bilinear', align_corners=False)
+        
+#         # 依次通过每个上采样模块 (4层而不是8层)
+#         for layer in self.main:
+#             x = layer(x)
+        
+#         outputs = x
+
+#         return {
+#             'outputs': outputs,
+#             'loss': F.mse_loss(outputs, pixel_values)
+#         }
+
+
+class ADLSTMConfig(PretrainedConfig):
+    """
+    Configuration class for ADLSTM model.
+    """
+    model_type = "adlstm"
+    
+    def __init__(
+        self,
+        in_channels: int = 3,
+        out_channels: int = 3,
+        lstm_hidden_size: list = [512, 1024],
+        lstm_num_layers: list = [1, 1],
+        hidden_dims: list = [256, 512, 1024, 2048, 8192],
+        upsample_dims: list = [32, 128, 96, 64, 48, 32],
+        **kwargs
+    ):
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.lstm_hidden_size = lstm_hidden_size
+        self.lstm_num_layers = lstm_num_layers
+        self.hidden_dims = hidden_dims
+        self.upsample_dims = upsample_dims
+        
+        super().__init__(**kwargs)
+
+
+class ADLSTM(PreTrainedModel):
+    """
+    ADLSTM model for time series to image generation.
+    """
+    config_class = ADLSTMConfig
+    
+    def __init__(self, config: ADLSTMConfig):
+        super().__init__(config)
+        
+        # Store config parameters
+        self.config = config
+        self.in_channels = config.in_channels
+        self.out_channels = config.out_channels
+        self.lstm_hidden_size = config.lstm_hidden_size
+        self.lstm_num_layers = config.lstm_num_layers
+        self.hidden_dims = config.hidden_dims
+        self.upsample_dims = config.upsample_dims
+
+        # Create LSTM layers
+        self.lstm_layers = nn.ModuleList()
+        assert len(self.lstm_hidden_size) == len(self.lstm_num_layers), "lstm_hidden_size and lstm_num_layers must have the same length"
+
+        current_input_size = self.in_channels
+        for i, (h_size, n_layers) in enumerate(zip(self.lstm_hidden_size, self.lstm_num_layers)):
+            self.lstm_layers.append(
+                nn.LSTM(
+                    input_size=current_input_size,
+                    hidden_size=h_size,
+                    num_layers=n_layers,
+                    batch_first=True
+                )
+            )
+            current_input_size = h_size
+
+        # Create Dense layers
+        modules = []
+
+        current_input_size = self.lstm_hidden_size[-1]
+        for h_size in self.hidden_dims:
+            modules.append(
+                nn.Sequential(
+                    nn.Linear(current_input_size, h_size),
+                    nn.BatchNorm1d(h_size),
+                    nn.Tanh()
+                )
+            )
+            current_input_size = h_size
+
+        self.denses = nn.Sequential(*modules)
+
+        # Create upsampling layers
+        modules = []
+        current_channels = self.upsample_dims[0]
+        for i, hidden_channels in enumerate(self.upsample_dims[1:]):
+            modules.append(
+                nn.Sequential(
+                    # nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+                    # nn.Conv2d(current_channels, hidden_channels, kernel_size=3, stride=1, padding=1, bias=False),
+                    nn.ConvTranspose2d(current_channels, hidden_channels, kernel_size=4, stride=2, padding=1, bias=False),
+                    nn.BatchNorm2d(hidden_channels),
+                    nn.LeakyReLU(0.2, True),
+                )
+            )
+            current_channels = hidden_channels
+
+        modules.append(
+            nn.Sequential(
+                nn.Conv2d(self.upsample_dims[-1], self.out_channels, kernel_size=5, stride=1, padding=2, bias=True),  # 使用5x5卷积进一步平滑
+                nn.Tanh()
+            )
+        )
+
+        self.upsamplers = nn.Sequential(*modules)
+
+    def forward(
+        self,
+        inputs: torch.Tensor,
+        pixel_values: Optional[torch.Tensor] = None,
+        **kwargs
+    ) -> Union[Tuple[torch.Tensor], BaseModelOutput]:
+        # inputs: (batch_size, num_sensors, sequence_length)
         x = inputs.transpose(1, 2)
 
-        # LSTM part
-        lstm_out1, _ = self.lstm1(x)
-        lstm_out1 = self.dropout1(lstm_out1)
+        # Pass through all LSTM layers
+        for lstm_layer in self.lstm_layers:
+            x, _ = lstm_layer(x)
+
+        # Get last timestep 
+        x = x[:, -1, :]  # (batch_size, final_lstm_hidden)
+
+        # Pass through all Dense layers
+        x = self.denses(x)
+
+        # Reshape for CNN input
+        hidden_size = (
+            int(pixel_values.size(2) / (2 ** (len(self.upsample_dims) - 1))),
+            int(pixel_values.size(3) / (2 ** (len(self.upsample_dims) - 1)))
+        )
+        x = x.view(x.size(0), -1, hidden_size[0], hidden_size[1])
+
+        # Adjust channels if necessary
+        if self.upsample_dims[0] > x.size(1):
+            pad_channels = self.upsample_dims[0] - x.size(1)
+            pad = torch.zeros(x.size(0), pad_channels, x.size(2), x.size(3), device=x.device)
+            x = torch.cat([x, pad], dim=1)
+        elif self.upsample_dims[0] < x.size(1):
+            x = x[:, :self.upsample_dims[0], :, :]
+
+        # Upsampling path
+        outputs = self.upsamplers(x)
         
-        lstm_out2, _ = self.lstm2(lstm_out1)
-        lstm_out2 = lstm_out2[:, -1, :]  # Take the last timestep output
-        
-        # Dense layers - use LeakyReLU for better gradient flow
-        x = F.leaky_relu(self.bn1(self.dense1(lstm_out2)), 0.2)
-        x = F.leaky_relu(self.bn2(self.dense2(x)), 0.2)
-        x = F.leaky_relu(self.bn3(self.dense3(x)), 0.2)
-        x = F.leaky_relu(self.bn4(self.dense4(x)), 0.2)
-        x = F.leaky_relu(self.bn5(self.dense5(x)), 0.2)
-        x = self.dropout2(x)
-        
-        # Reshape for CNN input (32, 16, 16) - 32 channels, 16x16 spatial
-        x = x.view(-1, 32, 16, 16)
-        
-        # 改进的上采样路径，减少棋盘效应
-        # 第一层：上采样+卷积 16x16 -> 32x32
-        x = self.upsample1(x)
-        x = F.leaky_relu(self.bn_conv1(self.conv1(x)), 0.2)
-        
-        # 第二层：上采样+卷积 32x32 -> 64x64
-        x = self.upsample2(x)
-        x = F.leaky_relu(self.bn_conv2(self.conv2(x)), 0.2)
-        x = self.dropout3(x)
-        
-        # 第三层：上采样+卷积 64x64 -> 128x128
-        x = self.upsample3(x)
-        x = F.leaky_relu(self.bn_conv3(self.conv3(x)), 0.2)
-        
-        # 第四层：上采样+卷积 128x128 -> 256x256
-        x = self.upsample4(x)
-        x = F.leaky_relu(self.bn_conv4(self.conv4(x)), 0.2)
-        x = self.dropout4(x)
-        
-        # 第五层：上采样+卷积 256x256 -> 512x512
-        x = self.upsample5(x)
-        x = F.leaky_relu(self.bn_conv5(self.conv5(x)), 0.2)
-        
-        # 最终输出层：直接生成3通道输出，使用tanh确保输出在[-1,1]范围
-        outputs = torch.tanh(self.conv_final(x))
-        
+        # Calculate loss if pixel_values provided
+        loss = F.mse_loss(outputs, pixel_values)
+
+        # Return dictionary
         return {
             'outputs': outputs,
-            'loss': F.mse_loss(outputs, pixel_values)
+            'loss': loss
+        }
+
+
+class DALLEModel(nn.Module):
+    """
+    DALL-E model wrapper for text-to-image generation.
+    """
+    def __init__(self):
+        super().__init__()
+        self.vae = OpenAIDiscreteVAE()
+
+        # self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        # self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        # Initialize DALL-E model
+        self.dalle = DALLE(
+            dim = 512,
+            vae = self.vae,             # automatically infer (1) image sequence length and (2) number of image tokens
+            num_text_tokens = 10000,    # vocab size for text
+            text_seq_len = 768,         # text sequence length
+            depth = 8,                 # should aim to be 64
+            heads = 16,                 # attention heads
+            dim_head = 64,              # attention head dimension
+            attn_dropout = 0.1,         # attention dropout
+            ff_dropout = 0.1            # feedforward dropout
+        )
+
+
+    def forward(
+        self,
+        inputs: torch.Tensor,
+        pixel_values: Optional[torch.Tensor] = None,
+        **kwargs
+    ) -> Union[Tuple[torch.Tensor], BaseModelOutput]:
+        
+        pixel_values = (pixel_values + 1) / 2
+
+        text = inputs.view(inputs.size(0), -1)
+        text = (text * 1E4).long()
+
+        loss = self.dalle(text, pixel_values, return_loss = True)
+
+        image = None if self.dalle.training else self.dalle.generate_images(text)
+        image = (image * 2) - 1 if image is not None else None
+
+        return {
+            'outputs': image,
+            'loss': loss
         }

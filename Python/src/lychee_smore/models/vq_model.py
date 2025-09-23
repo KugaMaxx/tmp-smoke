@@ -186,7 +186,6 @@ class VQConfig(PretrainedConfig):
     Configuration objects inherit from [`PretrainedConfig`] and can be used to control the model outputs. Read the
     documentation from [`PretrainedConfig`] for more information.
     """
-    
     model_type = "vq_vae"
     
     def __init__(
@@ -215,7 +214,6 @@ class VQModel(PreTrainedModel):
     """
     VQ-VAE Model for 1D data
     """
-    
     config_class = VQConfig
     
     def __init__(self, config: VQConfig):

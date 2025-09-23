@@ -923,6 +923,7 @@ if __name__ == "__main__":
         # Run a final round of validation.
         log_validation(args, pipeline, accelerator, dataloader, global_step, is_final_validation=True)
 
+        # Finish logging
         logger.info(f"Finished!")
 
     accelerator.end_training()
