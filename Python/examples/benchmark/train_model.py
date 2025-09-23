@@ -20,7 +20,7 @@ from datasets import load_dataset
 from transformers import set_seed
 from transformers.optimization import get_scheduler
 
-from Python.examples.benchmark.model import prepare_model, DALLEModel
+from model import prepare_model
 from lychee_smore.utils import Metrics
 
 
