@@ -146,7 +146,7 @@ class VQTokenizer(PreTrainedTokenizer):
         """
         # Check if the path is a directory or a model identifier
         if kwargs.get('subfolder') is None:
-             tokenizer_dir = pretrained_model_name_or_path
+            tokenizer_dir = pretrained_model_name_or_path
         else:
             tokenizer_dir = os.path.join(pretrained_model_name_or_path, kwargs['subfolder'])
 

@@ -37,7 +37,14 @@ def parse_args():
         default=None,
         choices=["field", "adlstm", "dalle"],
         required=True,
-        help="",
+        help="Select the specific model to train.",
+    )
+    parser.add_argument(
+        "--config_path",
+        type=str,
+        default=None,
+        required=True,
+        help="Path to the config file of the model (json).",
     )
     parser.add_argument(
         "--trust_remote_code",
@@ -411,17 +418,15 @@ if __name__ == "__main__":
     writer = SummaryWriter(log_dir=logging_dir)
 
     # Initialize the model
-    # model = prepare_model(args.model_name)
-    model = DALLEModel()
+    model = prepare_model(args.model_name, config_path=args.config_path)
+    model = model.to(args.device)
 
     # Load training data (after tokenizer is initialized)
     dataloader = prepare_dataset(args)
 
     # Log information
     logger.info(f"Training Arguments: \n {'\n '.join([f'{arg}: {value}' for arg, value in vars(args).items()])} \n")
-    # logger.info(f"Model Config: \n {model.config}")
-
-    model = model.to(args.device)
+    logger.info(f"Model Config: \n {model.config}")
 
     # Optimizer for all trainable parameters
     params_to_optimize = [p for n, p in model.named_parameters() if p.requires_grad]
