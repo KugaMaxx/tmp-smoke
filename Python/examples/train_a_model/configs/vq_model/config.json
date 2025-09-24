@@ -8,11 +8,11 @@
     64,
     128
   ],
-  "in_channels": 8,
+  "in_channels": 6,
   "latent_dim": 128,
   "model_type": "vq_vae",
   "num_embeddings": 2048,
-  "out_channels": 8,
+  "out_channels": 6,
   "torch_dtype": "float32",
   "transformers_version": "4.52.4"
 }
