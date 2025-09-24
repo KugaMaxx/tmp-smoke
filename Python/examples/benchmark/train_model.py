@@ -35,8 +35,9 @@ def parse_args():
     parser.add_argument(
         "--model_name",
         type=str,
-        default="adlstm",
-        required=False,
+        default=None,
+        choices=["field", "adlstm", "dalle"],
+        required=True,
         help="",
     )
     parser.add_argument(
@@ -50,8 +51,8 @@ def parse_args():
     parser.add_argument(
         '--dataset_name_or_path',
         type=str,
-        default='/home/dszh/workspace/tmp-smoke/Python/data/cube',
-        # required=True,
+        default=None,
+        required=True,
         help="Path to dataset or dataset identifier from huggingface.co/datasets.",
     )
     parser.add_argument(
@@ -83,7 +84,7 @@ def parse_args():
     parser.add_argument(
         "--resolution",
         type=int,
-        default=256,
+        default=512,
         help=(
             "The resolution for input images, all the images in the dataset will be resized to this resolution."
         ),
@@ -106,14 +107,14 @@ def parse_args():
     parser.add_argument(
         "--validation_ids",
         type=int,
-        default=[200, 500],
+        default=None,
         nargs="*",
         help=("A set of validation data evaluated every `--validation_steps`."),
     )
     parser.add_argument(
         "--validation_steps",
         type=int,
-        default=1000,
+        default=None,
         help="Run validation every X steps, will run at each epoch if set as None.",
     )
 
