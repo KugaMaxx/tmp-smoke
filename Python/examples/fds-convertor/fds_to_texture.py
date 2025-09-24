@@ -110,16 +110,25 @@ def plot3d_to_flipbook(
     # padding images
     images = [image_data[:, :, i] for i in range(NZP)]
 
+    # Auto-calculate optimal num_rows and num_cols if not explicitly set
+    best_num_rows, best_num_cols = calculate_optimal_layout(NZP, NYP, NXP)
+    if args.num_rows is None and args.num_cols is None:
+        args.num_rows, args.num_cols = best_num_rows, best_num_cols
+        # print(f"Auto-calculated layout: {args.num_rows} rows x {args.num_cols} cols")
+    elif args.num_rows != best_num_rows or args.num_cols != best_num_cols:
+        print(f"The best layout: {best_num_rows} rows x {best_num_cols} cols, "
+              f"however, current settings are: {args.num_rows} rows x {args.num_cols} cols")
+
     num_images = args.num_rows * args.num_cols
     if len(images) < num_images:
-        # print(f"Warning: num_rows * num_cols ({args.num_rows * args.num_cols}) is greater than NZP ({NZP}). "
-        #       "Will add empty slices to fit.")
+        print(f"Warning: num_rows * num_cols ({args.num_rows * args.num_cols}) is greater than NZP ({NZP}). "
+              "Will add empty slices to fit.")
         # Add empty slices to fit the required number of images
         images += [np.zeros_like(images[0])] * (num_images - len(images))
 
     elif len(images) > num_images:
-        # print(f"Warning: num_rows * num_cols ({args.num_rows * args.num_cols}) is less than NZP ({NZP}). "
-        #       "Will delete some slices to fit.")
+        print(f"Warning: num_rows * num_cols ({args.num_rows * args.num_cols}) is less than NZP ({NZP}). "
+              "Will delete some slices to fit.")
         # Truncate the list to fit the required number of images
         images = images[:num_images]
 
