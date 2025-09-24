@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lychee-smore"
+version = "0.1.0"
+description = "Official scripts for building SmoRe"
+authors = [
+    {name = "KugaMaxx", email = "KugaMaxx@outlook.com"}
+]
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "tqdm",
+    "datasets",
+    "diffusers",
+    "torchmetrics",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[project.urls]
+Homepage = "https://github.com/KugaMaxx/tmp-smoke"
+Repository = "https://github.com/KugaMaxx/tmp-smoke"
+Issues = "https://github.com/KugaMaxx/tmp-smoke/issues"

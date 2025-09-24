@@ -7,6 +7,6 @@ setup(name='lychee-smore',
       description='Official scripts for building SmoRe',
       author='KugaMaxx',
       author_email='KugaMaxx@outlook.com',
-      packages=find_packages(where='Python/src'),
-      package_dir={'': 'Python/src'},
+      packages=find_packages(where='src'),
+      package_dir={'': 'src'},
 )

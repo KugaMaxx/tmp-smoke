@@ -20,8 +20,7 @@ from datasets import load_dataset
 from transformers import set_seed
 from transformers.optimization import get_scheduler
 
-from model import prepare_model
-from lychee_smore.utils import Metrics
+from models import prepare_model
 
 
 # Setup logging
