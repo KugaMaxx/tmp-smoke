@@ -52,9 +52,8 @@ To simulate a smoke reconstruction process, simply run:
 python3 demo.py
 ```
 
-This command will automatically download a pre-trained model and execute a demo of the smoke reconstruction process. The output should match the example shown above.
-
----
+This command will automatically download a pre-trained model and execute a demo of the smoke reconstruction process.
+ The output should match the example shown above.
 
 **See more:** Get started quickly with our hands-on tutorials
 
