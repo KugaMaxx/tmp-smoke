@@ -5,24 +5,9 @@ This is a guide to train your own Stable Diffusion model for generating 2D smoke
 
 ## Preliminaries
 
-### Installing the dependencies
+### Setup environment
 
-Git clone the repository into the local and install the package from source:
-
-```bash
-# Make sure you have installed git
-git clone https://github.com/KugaMaxx/lychee-smore
-
-# Enter the directory
-cd lychee-smore
-
-# Install from source
-# Make sure conda or virtualenv is activated
-pip install .
-# or you can use pip install -e . to install in editable mode
-```
-
-Then install the required packages:
+Install the required packages:
 
 ```bash
 # Also do in conda or virtualenv
@@ -36,10 +21,18 @@ environment with:
 accelerate config
 ```
 
-Or for a default accelerate configuration without answering questions:
+or a default accelerate configuration without answering questions:
 
 ```bash
 accelerate config default
+```
+
+[Optional] Install [xformers](https://github.com/facebookresearch/xformers#installing-xformers)
+ for fast and memory-efficient purpose.
+
+```bash
+# This example is for CUDA-12.8
+pip install xformers --index-url https://download.pytorch.org/whl/cu128
 ```
 
 ### Prepare the dataset
