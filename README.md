@@ -46,8 +46,6 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 
 ## How to Use
 
-### Run a demo
-
 To simulate a smoke reconstruction process, run the following command:
 
 ```bash
@@ -55,14 +53,14 @@ python3 demo.py
 ```
 
 This will automatically download a pre-trained model and run simple demo of
- smoke reconstruction process. The result should be same as shown at the beginning.
+ smoke reconstruction process. The result should be same as shown at the beginning. 
 
-### See more
-
-For more details, we provide several example tutorials to help you get started:
+**See more:** we provide several example tutorials to help you get started:
 
 - [train_a_model](): Train your own Stable Diffusion model for smoke reconstruction.
+
 - [fds_convertor](): Build your own dataset from FDS simulation results.
+
 - [smoke_monitor](): Try digital-twin smoke monitor system built by Unreal Engine.
 
 **Note 1:** If you want to learn how to train the model, please go to [train_a_model].
