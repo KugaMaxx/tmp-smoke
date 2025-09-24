@@ -1,11 +1,6 @@
-# TODO
+# SmoRe: Generative 3D Smoke Reconstruction for Real-Time Accident Monitoring via Remote IoT Sensors
 
-候选标题：
-- Real-time Integrated Smoke Monitoring and Immersive VR Simulation (RISMIV): A Digital Twin Approach
-- 
-
-
-XXX is 
+XXX is
 
 ## Installation
 
@@ -49,7 +44,9 @@ Install [PyTorch](https://pytorch.org/get-started/locally/) with the appropriate
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 ```
 
-## Run a Demo
+## How to Use
+
+### Run a demo
 
 To simulate a smoke reconstruction process, run the following command:
 
@@ -57,13 +54,31 @@ To simulate a smoke reconstruction process, run the following command:
 python3 demo.py
 ```
 
-This will automatically download a pre-trained model finetuned on a simple smoke
- dataset and run reconstruction process based on time-series sensor data. The
- result should be same as shown at the beginning.
+This will automatically download a pre-trained model and run simple demo of
+ smoke reconstruction process. The result should be same as shown at the beginning.
+
+### See more
+
+For more details, we provide several example tutorials to help you get started:
+
+- [train_a_model](): Train your own Stable Diffusion model for smoke reconstruction.
+- [fds_convertor](): Build your own dataset from FDS simulation results.
+- [smoke_monitor](): Try digital-twin smoke monitor system built by Unreal Engine.
 
 **Note 1:** If you want to learn how to train the model, please go to [train_a_model].
 
 **Note 2:** If you need to build your own dataset, please go to [fds_convertor].
+
+**Note 3:** If you want to test the model on your own sensor data, please go to
+ [test_your_data].
+
+## BibTex
+
+If you find this repository useful in your research, please consider citing the
+ following paper:
+
+```bibtex
+```
 
 ## Acknowledgement
 
