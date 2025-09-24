@@ -55,16 +55,18 @@ python3 demo.py
 This command will automatically download a pre-trained model and execute a demo of the smoke reconstruction process.
  The output should match the example shown above.
 
-> **See more:** Get started quickly with our hands-on tutorials
-> 
-> - **[Train a Model]()**  
->     Learn how to train your own Stable Diffusion model for smoke reconstruction.
-> 
-> - **[FDS Convertor]()**  
->     Build custom datasets from FDS simulation results.
-> 
-> - **[Smoke Monitor]()**  
->     Explore our digital-twin smoke monitoring system powered by Unreal Engine.
+### See More
+
+Get started quickly with our hands-on tutorials
+
+- **[Train a Model]()**  
+    Learn how to train your own Stable Diffusion model for smoke reconstruction.
+
+- **[FDS Convertor]()**  
+    Build custom datasets from FDS simulation results.
+
+- **[Smoke Monitor]()**  
+    Explore our digital-twin smoke monitoring system powered by Unreal Engine.
 
 ## BibTeX
 
