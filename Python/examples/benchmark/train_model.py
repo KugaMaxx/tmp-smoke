@@ -197,7 +197,7 @@ def parse_args():
     parser.add_argument(
         "--num_train_epochs",
         type=int,
-        default=600,
+        default=300,
     )
 
     # scheduler

@@ -109,7 +109,7 @@ cd <your_expand_fds_dir>/train/<case_1>_h1000
 
 # Run fds simulation, this process can take a long time
 fds <case_1>_h1000.fds
-# You can also run in the background if you have multiple cases:
+# You can also run without hanging up:
 # nohup fds <case_1>_h1000.fds &
 ```
 
@@ -145,12 +145,18 @@ python3 fds_to_texture.py \
 ```
 
 **Note 1:** Some other parameters you can set:
-- `--image_size`: Size of the output images (default: 512)
-- `--num_images`: Number of images to generate per case (default: 100)
+- `--selected_quantity`: Quantity to visualize from the .q files (default: 'OPTICAL DENSITY')
+- `--selected_sensor_type`: Type of sensor data to use (default: 'SD')
+- `--history_length`: Length of historical sensor data to use (default: 10)
+- `--num_rows`: Number of x-axis slice data in the volume texture (automatically set if not provided)
+- `--num_cols`: Number of y-axis slice data in the volume texture (automatically set if not provided)
+- `--min_value`: Minimum value for normalization (default: 0.0)
+- `--max_value`: Maximum value for normalization (default: 1.5)
+- `--num_workers`: Number of parallel workers (default: 1)
 
 This script will process the FDS data and generate images from the `.q` files,
  along with a `prompt.jsonl` file that contains the metadata of time-series 
- sensor data and corresponding 2D texture image.
+ sensor data and corresponding 2D volume texture image.
 ```
 <your_dataset>
 ├── <your_dataset>.py
