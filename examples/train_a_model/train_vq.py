@@ -249,7 +249,11 @@ def prepare_dataset(args):
             f"--caption_column' value '{args.caption_column}' not found in the validation dataset, "
             f"needs to be one of: {', '.join(dataset['validation'].column_names)}"
         )
-
+    
+    # Extract a subset for efficient validation
+    if args.validation_ids is not None:
+        dataset["validation"] = dataset["validation"].select(args.validation_ids)
+    
     # Build the dataloader
     def collate_fn(batch): 
         return {
@@ -308,12 +312,6 @@ def log_validation(args, tokenizer, dataloader, global_step, writer):
         
         # Log validation information
         for id, batch in enumerate(dataloader['validation']):
-            if id > max(args.validation_ids): 
-                break
-            
-            if id not in args.validation_ids: 
-                continue
-
             # Log the tokens
             logger.info(f"  Tokens: {tokenizer(batch["texts"])}")
 

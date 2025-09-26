@@ -1,4 +1,6 @@
 tqdm
 datasets
 diffusers
+tensorboard
 torchmetrics
+transformers

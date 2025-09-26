@@ -261,6 +261,10 @@ def prepare_dataset(args):
             f"--caption_column' value '{args.caption_column}' not found in the validation dataset, "
             f"needs to be one of: {', '.join(dataset['validation'].column_names)}"
         )
+    
+    # Extract a subset for efficient validation
+    if args.validation_ids is not None:
+        dataset["validation"] = dataset["validation"].select(args.validation_ids)
 
     # Transform the dataset
     def preprocess(examples):
@@ -353,39 +357,25 @@ def log_validation(args, model, dataloader, global_step, writer):
     with torch.no_grad():
         model.eval()
 
-        validation_batch = {
-            "inputs": [],
-            "pixel_values": []
-        }
-
         # Log validation information
         for id, batch in enumerate(dataloader['validation']):
-            if id > max(args.validation_ids): 
-                break
+            pred = model(
+                inputs=batch['inputs'].to(args.device),
+                pixel_values=batch['pixel_values'].to(args.device)
+            )
+
+            # Convert outputs from [-1, 1] to [0, 1] for tensorboard visualization
+            outputs_normalized = (pred['outputs'] + 1) / 2
+            outputs_normalized = outputs_normalized.clamp(0, 1)  # Ensure values are in [0, 1]
             
-            if id not in args.validation_ids: 
-                continue
-
-            validation_batch["inputs"].append(batch['inputs'][0])
-            validation_batch["pixel_values"].append(batch['pixel_values'][0])
-
-        pred = model(
-            inputs=torch.stack(validation_batch["inputs"]).to(args.device),
-            pixel_values=torch.stack(validation_batch["pixel_values"]).to(args.device)
-        )
-
-        # Convert outputs from [-1, 1] to [0, 1] for tensorboard visualization
-        outputs_normalized = (pred['outputs'] + 1) / 2
-        outputs_normalized = outputs_normalized.clamp(0, 1)  # Ensure values are in [0, 1]
-        
-        # Add normalized images to tensorboard
-        writer.add_images('validation/predictions', outputs_normalized, global_step, dataformats='NCHW')
-        
-        # Also normalize and add ground truth for comparison
-        ground_truth = torch.stack(validation_batch["pixel_values"]).to(args.device)
-        ground_truth_normalized = (ground_truth + 1) / 2
-        ground_truth_normalized = ground_truth_normalized.clamp(0, 1)
-        writer.add_images('validation/ground_truth', ground_truth_normalized, global_step, dataformats='NCHW')
+            # Add normalized images to tensorboard
+            writer.add_images(f'validation/recon_{id}', outputs_normalized, global_step, dataformats='NCHW')
+            
+            # Also normalize and add ground truth for comparison
+            ground_truth = batch["pixel_values"].to(args.device)
+            ground_truth_normalized = (ground_truth + 1) / 2
+            ground_truth_normalized = ground_truth_normalized.clamp(0, 1)
+            writer.add_images(f'validation/ground_truth_{id}', ground_truth_normalized, global_step, dataformats='NCHW')
 
         model.train()
 

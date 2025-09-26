@@ -475,6 +475,10 @@ def prepare_dataset(args, tokenizer, accelerator):
             f"needs to be one of: {', '.join(dataset['validation'].column_names)}"
         )
 
+    # Extract a subset for efficient validation
+    if args.validation_ids is not None:
+        dataset["validation"] = dataset["validation"].select(args.validation_ids)
+
     def preprocess(examples):
         # Preprocess the images
         image_transforms = transforms.Compose(
@@ -568,11 +572,6 @@ def log_validation(args, pipeline, accelerator, dataloader, global_step, is_fina
 
     # Log validation information
     for id, batch in enumerate(dataloader['validation']):
-        if id > max(args.validation_ids): 
-            break
-
-        if id not in args.validation_ids: 
-            continue
 
         prompt_embeds = pipeline.text_encoder(batch["input_ids"])[0]
 

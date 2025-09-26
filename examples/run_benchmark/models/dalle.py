@@ -22,7 +22,7 @@ def load_model(path):
 
 
 def download(url, filename = None, root = os.path.expanduser("~/.cache/dalle")):
-    import tqdm
+    from tqdm import tqdm
     import urllib.request
     
     os.makedirs(root, exist_ok = True)

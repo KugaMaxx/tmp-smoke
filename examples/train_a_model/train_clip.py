@@ -288,7 +288,11 @@ def prepare_dataset(args, tokenizer):
             f"--caption_column' value '{args.caption_column}' not found in the validation dataset, "
             f"needs to be one of: {', '.join(dataset['validation'].column_names)}"
         )
-
+    
+    # Extract a subset for efficient validation
+    if args.validation_ids is not None:
+        dataset["validation"] = dataset["validation"].select(args.validation_ids)
+    
     # Transform the dataset
     def preprocess(examples):
         # Preprocess the images
@@ -397,12 +401,7 @@ def log_validation(args, model, dataloader, global_step, writer):
 
         # Log validation information
         for id, batch in enumerate(dataloader['validation']):
-            if id > max(args.validation_ids): 
-                break
-            
-            if id not in args.validation_ids: 
-                continue
-
+            # Batch append, be attention not using too large validation set
             validation_batch["input_ids"].append(batch['input_ids'][0])
             validation_batch["pixel_values"].append(batch['pixel_values'][0])
             validation_batch["attention_mask"].append(batch['attention_mask'][0])
