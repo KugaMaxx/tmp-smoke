@@ -1,7 +1,4 @@
-accelerate
+tqdm
 datasets
 diffusers
-tqdm
-transformers
-tensorboard
 torchmetrics
