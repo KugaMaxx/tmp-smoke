@@ -7,14 +7,7 @@ This is a guide to train your own Stable Diffusion model for generating 2D smoke
 
 ### Setup environment
 
-Install the required packages:
-
-```bash
-# Also do in conda or virtualenv
-pip install -r requirements.txt
-```
-
-And initialize an [Accelerate](https://github.com/huggingface/accelerate/)
+Initialize an [Accelerate](https://github.com/huggingface/accelerate/)
 environment with:
 
 ```bash
