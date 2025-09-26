@@ -59,10 +59,9 @@ class OpenAIDiscreteVAE(nn.Module):
             for param in self.parameters():
                 param.set_(param.contiguous())
 
-        self.channels = 3
+        # Extract num_layers and num_tokens from loaded models
         self.num_layers = 3
-        self.image_size = 512
-        self.num_tokens = 8192
+        self.num_tokens = self.dec.vocab_size
 
     @torch.no_grad()
     def get_codebook_indices(self, img):
@@ -708,10 +707,11 @@ class DALLEConfig(PretrainedConfig):
     
     def __init__(
         self,
+        image_size = 512,           # image size
         text_seq_len = 24,          # text sequence length
         num_text_tokens = 10000,    # vocab size for text
         dim: int = 512,             # model dimension
-        depth = 6,                  # should aim to be 64
+        depth = 4,                  # should aim to be 64 (however 4 is good enough)
         heads = 16,                 # attention heads
         dim_head = 64,              # attention head dimension
         attn_dropout = 0.1,         # attention dropout
@@ -719,6 +719,7 @@ class DALLEConfig(PretrainedConfig):
         loss_img_weight = 7,        # weight for image loss
         **kwargs
     ):
+        self.image_size = image_size
         self.text_seq_len = text_seq_len
         self.num_text_tokens = num_text_tokens
         self.dim = dim
@@ -745,6 +746,7 @@ class DALLEModel(PreTrainedModel):
 
         # Store config parameters
         self.config = config
+        self.image_size = config.image_size
         self.text_seq_len = config.text_seq_len
         self.num_text_tokens = config.num_text_tokens
         self.dim = config.dim
@@ -760,7 +762,7 @@ class DALLEModel(PreTrainedModel):
         self.vae.requires_grad_(False)
 
         # Image tokens and sequence length
-        self.image_fmap_size = (self.vae.image_size // (2 ** self.vae.num_layers))
+        self.image_fmap_size = (self.image_size // (2 ** self.vae.num_layers))
         self.image_seq_len = self.image_fmap_size ** 2
 
         num_text_tokens = self.num_text_tokens + self.text_seq_len
@@ -780,7 +782,7 @@ class DALLEModel(PreTrainedModel):
         self.total_seq_len = self.text_seq_len + self.image_seq_len
         self.total_tokens = self.num_text_tokens + self.num_image_tokens
 
-        self.transformer =  Transformer(
+        self.transformer = Transformer(
             dim = self.dim,
             seq_len=self.total_seq_len,
             depth = self.depth,
@@ -823,10 +825,10 @@ class DALLEModel(PreTrainedModel):
         # Normalize pixel values to [0, 1]
         image = (pixel_values + 1) / 2
 
-        if image.size(2) != self.vae.image_size or image.size(3) != self.vae.image_size:
+        if image.size(2) != self.image_size or image.size(3) != self.image_size:
             image = F.interpolate(
                 image,
-                size=(self.vae.image_size, self.vae.image_size),
+                size=(self.image_size, self.image_size),
                 mode="bilinear",
                 align_corners=False,
             )
