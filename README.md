@@ -46,6 +46,8 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 
 ## How to Use
 
+### Run a demo
+
 To simulate a smoke reconstruction process, simply run:
 
 ```bash
@@ -53,9 +55,9 @@ python3 demo.py
 ```
 
 This command will automatically download a pre-trained model and execute a demo of the smoke reconstruction process.
- The output should match the example shown above.
+ The outputs will be saved in the `./output` directory.
 
-### See More
+### See more
 
 Get started quickly with our hands-on tutorials
 
@@ -67,6 +69,9 @@ Get started quickly with our hands-on tutorials
 
 - **[Smoke Monitor]()**  
     Explore our digital-twin smoke monitoring system powered by Unreal Engine.
+
+- **[Run Benchmarks]()**  
+    Evaluate the performance and compare with different SOTA models.
 
 ## BibTeX
 
