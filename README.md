@@ -3,7 +3,7 @@
 XXX is
 
 <span id="animation"></span>
-![animation](https://raw.githubusercontent.com/KugaMaxx/tmp-smoke/blob/main/assets/images/demonstration.gif "animation")
+![animation](https://raw.githubusercontent.com/KugaMaxx/tmp-smoke/main/assets/images/demonstration.gif "animation")
 
 ## Installation
 
