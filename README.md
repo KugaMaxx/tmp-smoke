@@ -2,6 +2,9 @@
 
 XXX is
 
+<span id="animation"></span>
+![animation](https://raw.githubusercontent.com/KugaMaxx/tmp-smoke/main/assets/images/demonstration.gif "animation")
+
 ## Installation
 
 Clone the repository into the local:
