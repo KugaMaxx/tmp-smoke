@@ -219,7 +219,7 @@ if __name__ == '__main__':
 
         # Create an OpenVDB grid from the volume data
         grid = openvdb.FloatGrid()
-        grid.name = "opacity"
+        grid.name = "density"
 
         # OpenVDB expects (z, y, x) order, so ensure gt_volume is in that order
         # gt_volume is (height, width, depth), so we need to transpose to (depth, height, width)

@@ -91,4 +91,4 @@ if __name__ == '__main__':
         hrr = random.randint(args.start_hrr, args.end_hrr)
 
         # save validation
-        validation_fds_file = modify_hrr_and_save(fds_file, hrr, output_dir=output_validation_dir, output_name=fds_file_name)
+        modify_hrr_and_save(fds_file, hrr, output_dir=output_validation_dir, output_name=fds_file_name)

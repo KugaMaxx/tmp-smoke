@@ -757,7 +757,7 @@ class DALLEModel(PreTrainedModel):
         self.ff_dropout = config.ff_dropout
         self.loss_img_weight = config.loss_img_weight
 
-        # Pretrained VAE on 256x256 images
+        # Pretrained VAE
         self.vae = OpenAIDiscreteVAE()
         self.vae.requires_grad_(False)
 
