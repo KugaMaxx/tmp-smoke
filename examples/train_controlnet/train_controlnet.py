@@ -1,14 +1,9 @@
 #!/usr/bin/env python
 #
-# This script is a variant of ControlNet training from diffusers. You may find more
-# details at
+# This script is a variant of ControlNet training from diffusers, which will be
+# finetuned to smoke reconstruction task. You may find more details at
 #
 #   https://github.com/huggingface/diffusers/tree/main/examples/controlnet
-#
-# Unlike the source code, the time-series sensor data will be tokenized by the
-# pretrained VQ-VAE, and the CLIP model is also pretrained to align with the
-# modified tokenizer. The training process is similar to the original one, but
-# some irrelevant codes have been deleted for simplification.
 
 import os
 import math
