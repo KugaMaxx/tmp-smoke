@@ -1,11 +1,9 @@
-export MODEL_NAME="/home/dszh/workspace/tmp-smoke/models/3d-smore-8ch"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export DATASET_NAME="/home/dszh/workspace/tmp-smoke/data/controlnet"
-export OUTPUT_DIR="/home/dszh/workspace/tmp-smoke/models/3d-smore-8ch-controlnet"
+export OUTPUT_DIR="/home/dszh/workspace/tmp-smoke/models/controlnet-finetuned"
 
 accelerate launch --mixed_precision="fp16"  train_controlnet.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
-  --tokenizer_name_or_path=$OUTPUT_DIR \
-  --text_encoder_name_or_path=$OUTPUT_DIR \
   --dataset_name_or_path=$DATASET_NAME \
   --output_dir=$OUTPUT_DIR \
   --train_batch_size=8 \

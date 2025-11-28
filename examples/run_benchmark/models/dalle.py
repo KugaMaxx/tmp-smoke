@@ -484,7 +484,6 @@ class Attention(nn.Module):
         inner_dim = dim_head *  heads
         self.heads = heads
         self.seq_len = seq_len
-        self.scale = dim_head ** -0.5
 
         self.causal = causal
         self.register_buffer('static_mask', static_mask, persistent=False)
@@ -510,36 +509,52 @@ class Attention(nn.Module):
 
             q, k, v = apply_pos_emb(rotary_pos_emb[..., offset:, :], (q, k, v))
 
-        q = q * self.scale
-
         if offset > 0:
             k_top, v_top = cache[cache_key]
             k = torch.cat([k_top, k], dim=-2)
             v = torch.cat([v_top, v], dim=-2)
         if cache is not None:
             cache[cache_key] = k, v
-
-        dots = torch.einsum('b h i d, b h j d -> b h i j', q, k)
-        mask_value = -torch.finfo(dots.dtype).max
-
+        
+        # Handle input mask
+        attn_mask = None
         if mask is not None:
-            mask = mask.unsqueeze(1).unsqueeze(1)
-            dots.masked_fill_(~mask, mask_value)
-            del mask
-
-        if self.causal and offset == 0:  # causality is naturally enforced for the cached inference
-            i, j = dots.shape[-2:]
-            mask = torch.ones(i, j, device = device).triu_(j - i + 1).bool()
-            dots.masked_fill_(mask, mask_value)
-
+            # Convert mask to the format expected by scaled_dot_product_attention
+            # Shape should be (batch_size, num_heads, seq_len_q, seq_len_k) or broadcastable
+            input_mask = mask.unsqueeze(1).unsqueeze(1)  # (b, 1, 1, seq_len)
+            input_mask = input_mask.expand(b, 1, n, mask.shape[-1])
+            attn_mask = input_mask
+        
+        # Handle causal mask
+        if self.causal and offset == 0:
+            i, j = q.shape[-2], k.shape[-2]
+            causal_mask = torch.ones(i, j, device=device, dtype=torch.bool).triu_(j - i + 1)
+            causal_mask = ~causal_mask  # Invert because scaled_dot_product_attention expects True for valid positions
+            
+            if attn_mask is not None:
+                attn_mask = attn_mask & causal_mask.unsqueeze(0).unsqueeze(0)
+            else:
+                attn_mask = causal_mask.unsqueeze(0).unsqueeze(0).expand(b, 1, -1, -1)
+        
+        # Handle static mask
         if self.static_mask is not None:
-            dots.masked_fill_(~self.static_mask[offset:offset + n, :offset + n], mask_value)
+            static_mask_slice = self.static_mask[offset:offset + n, :offset + k.shape[-2]]
+            
+            if attn_mask is not None:
+                attn_mask = attn_mask & static_mask_slice.unsqueeze(0).unsqueeze(0)
+            else:
+                attn_mask = static_mask_slice.unsqueeze(0).unsqueeze(0).expand(b, h, -1, -1)
 
-        attn = torch.softmax(dots, dim=-1)
-
-        out = torch.einsum('b h i j, b h j d -> b h i d', attn, v)
+        # Apply efficient scaled dot product attention
+        out = F.scaled_dot_product_attention(
+            q, k, v, 
+            attn_mask=attn_mask,
+            dropout_p=0.0,  # Dropout is handled in the output layer
+            is_causal=False  # We handle causality explicitly with attn_mask
+        )
+        
         out = out.transpose(1, 2).contiguous().view(b, n, -1)
-        out =  self.to_out(out)
+        out = self.to_out(out)
         return out
 
 
@@ -794,6 +809,7 @@ class DALLEModel(PreTrainedModel):
             shift_tokens = True,
             rotary_emb = True,
         )
+        # self.transformer.gradient_checkpointing_enable()
 
         self.to_logits = nn.Sequential(
             nn.LayerNorm(self.dim),
