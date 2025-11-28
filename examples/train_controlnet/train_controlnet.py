@@ -11,7 +11,6 @@ import shutil
 import logging
 import argparse
 import datetime
-import contextlib
 
 import numpy as np
 from pathlib import Path

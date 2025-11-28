@@ -267,7 +267,8 @@ if __name__ == "__main__":
             metrics.update(result['outputs'], batch["pixel_values"])
 
     # Compute final metrics
-    final_metrics = metrics.compute()
+    metrics.compute()
     
+    # Log final metrics
     logger.info("Evaluation completed.")
     logger.info(f"\n{metrics.summarize()}")
