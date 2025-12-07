@@ -1,3 +1,4 @@
+import imageio
 import argparse
 import numpy as np
 from tqdm import tqdm
@@ -97,6 +98,12 @@ if __name__ == '__main__':
         type=int,
         help="Number of top-k retrievals from the database.",
     )
+    parser.add_argument(
+        "--index_dim",
+        default=100,
+        type=int,
+        help="Dimension of the index vectors.",
+    )
 
     # others
     parser.add_argument(
@@ -166,13 +173,13 @@ if __name__ == '__main__':
     )
 
     # Build the database index
-    index = faiss.IndexFlatIP(pipeline.tokenizer.model_max_length - 2)
+    index = faiss.IndexFlatIP(args.index_dim)
     print("Building database...")
     for i, batch in tqdm(enumerate(dataloader['database']), total=len(dataloader['database'])):
         # Encode the text to get the embeddings
         input_ids = pipeline.tokenizer(batch['texts'][0])['input_ids']
-        input_ids = np.array(input_ids[1:-1])  # remove bos and eos
-        input_ids = np.pad(input_ids, (0, index.d - len(input_ids)), 'constant')
+        input_ids = np.array([int(x.strip()) for x in batch['texts'][0].split(',')])
+        input_ids = np.pad(input_ids, (0, args.index_dim - len(input_ids)), 'constant')
         input_ids = np.expand_dims(input_ids, axis=0).astype(np.float32)
 
         # Normalize for cosine similarity
@@ -222,8 +229,8 @@ if __name__ == '__main__':
 
         # Encode the text to get the embeddings
         input_ids = pipeline.tokenizer(batch['texts'][0])['input_ids']
-        input_ids = np.array(input_ids[1:-1])  # remove bos and eos
-        input_ids = np.pad(input_ids, (0, index.d - len(input_ids)), 'constant')
+        input_ids = np.array([int(x.strip()) for x in batch['texts'][0].split(',')])
+        input_ids = np.pad(input_ids, (0, args.index_dim - len(input_ids)), 'constant')
         input_ids = np.expand_dims(input_ids, axis=0).astype(np.float32)
 
         # Normalize for cosine similarity
@@ -235,12 +242,13 @@ if __name__ == '__main__':
         # Retrieve the images from the database
         retrieved_images = database[I[0]]['image']
 
-        # Convert cosine similarities to weights (normalize to sum to 1)
-        weights = D[0] / D[0].sum()
-
         # Compute weighted average of retrieved images
-        image_array = [np.array(img) for img in retrieved_images]
-        image_array = np.average(image_array, axis=0, weights=weights).astype(np.uint8)
+        if D[0][0] >= 0.5:
+            weights = D[0] / D[0].sum()
+            image_array = [np.array(img) for img in retrieved_images]
+            image_array = np.average(image_array, axis=0, weights=weights).astype(np.uint8)
+        else:
+            image_array = np.zeros_like(np.array(gt_texture))
 
         # Convert back to PIL Image
         conditioning_image = Image.fromarray(image_array).convert("RGB")
@@ -303,10 +311,19 @@ if __name__ == '__main__':
     print("Saving animation...")
 
     if len(frames) != 0:
-        frames[0].save(
-            Path(args.output_dir) / "annimation.gif",
-            save_all=True,
-            append_images=frames[1:],
-            duration=200,
-            loop=0
-        )
+
+        # Save as mp4 video
+        video_path = Path(args.output_dir) / "animation.mp4"
+        video_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write mp4 using ffmpeg backend
+        with imageio.get_writer(video_path, format='FFMPEG', fps=30, codec="libx264", quality=10) as writer:
+            for im in frames:
+                # Convert PIL.Image to RGB numpy array
+                if isinstance(im, Image.Image):
+                    frame = np.array(im.convert("RGB"))
+                else:
+                    frame = np.array(im)
+                writer.append_data(frame)
+
+        print(f"Saved video to {video_path}")
