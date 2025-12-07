@@ -99,6 +99,14 @@ class Metrics:
         Compute final metrics across all accumulated data.
         Returns dictionary with metric values.
         """
+        # Check if any samples have been processed
+        if self.psnr.total == 0:
+            return {
+            'psnr': float('nan'),
+            'ssim': float('nan'),
+            'lpips': float('nan')
+            }
+        
         return {
             'psnr': self.psnr.compute().item(),
             'ssim': self.ssim.compute().item(), 
