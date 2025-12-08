@@ -165,6 +165,7 @@ if __name__ == '__main__':
             'case': [item['case'] for item in batch],
             'pixel_values': [item['image'].convert('RGB') for item in batch],
             'texts': [item['text'] for item in batch],
+            'timestep': [item['timestep'] for item in batch],
             'min_value': [item['min_value'] for item in batch],
             'max_value': [item['max_value'] for item in batch],
         },
@@ -177,8 +178,7 @@ if __name__ == '__main__':
     print("Building database...")
     for i, batch in tqdm(enumerate(dataloader['database']), total=len(dataloader['database'])):
         # Encode the text to get the embeddings
-        input_ids = pipeline.tokenizer(batch['texts'][0])['input_ids']
-        input_ids = np.array([int(x.strip()) for x in batch['texts'][0].split(',')])
+        input_ids = np.array([batch['timestep'][0]] + [int(x.strip()) for x in batch['texts'][0].split(',')])
         input_ids = np.pad(input_ids, (0, args.index_dim - len(input_ids)), 'constant')
         input_ids = np.expand_dims(input_ids, axis=0).astype(np.float32)
 
@@ -209,6 +209,7 @@ if __name__ == '__main__':
             'case': [item['case'] for item in batch],
             'pixel_values': [item['image'].convert('RGB') for item in batch],
             'texts': [item['text'] for item in batch],
+            'timestep': [item['timestep'] for item in batch],
             'min_value': [item['min_value'] for item in batch],
             'max_value': [item['max_value'] for item in batch],
         },
@@ -228,8 +229,7 @@ if __name__ == '__main__':
         gt_texture = batch['pixel_values'][0]
 
         # Encode the text to get the embeddings
-        input_ids = pipeline.tokenizer(batch['texts'][0])['input_ids']
-        input_ids = np.array([int(x.strip()) for x in batch['texts'][0].split(',')])
+        input_ids = np.array([batch['timestep'][0]] + [int(x.strip()) for x in batch['texts'][0].split(',')])
         input_ids = np.pad(input_ids, (0, args.index_dim - len(input_ids)), 'constant')
         input_ids = np.expand_dims(input_ids, axis=0).astype(np.float32)
 
@@ -279,7 +279,6 @@ if __name__ == '__main__':
             batch["max_value"][0],
         )
 
-        # === Export image ===
         # Define the image path
         image_path = Path(args.output_dir) / f"top_{args.top_k}" / f"frame_{i:06d}.png"
         image_path.parent.mkdir(parents=True, exist_ok=True)
