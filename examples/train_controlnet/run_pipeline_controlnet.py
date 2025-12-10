@@ -163,11 +163,11 @@ if __name__ == '__main__':
         shuffle=False,
         collate_fn=lambda batch: {
             'case': [item['case'] for item in batch],
-            'pixel_values': [item['image'].convert('RGB') for item in batch],
+            'image': [item['image'].convert('RGB') for item in batch],
             'texts': [item['text'] for item in batch],
-            'timestep': [item['timestep'] for item in batch],
             'min_value': [item['min_value'] for item in batch],
             'max_value': [item['max_value'] for item in batch],
+            'index_vector': [item['index_vector'] for item in batch],
         },
         batch_size=1,
         num_workers=args.dataloader_num_workers
@@ -177,10 +177,10 @@ if __name__ == '__main__':
     index = faiss.IndexFlatIP(args.index_dim)
     print("Building database...")
     for i, batch in tqdm(enumerate(dataloader['database']), total=len(dataloader['database'])):
-        # Encode the text to get the embeddings
-        input_ids = np.array([batch['timestep'][0]] + [int(x.strip()) for x in batch['texts'][0].split(',')])
-        input_ids = np.pad(input_ids, (0, args.index_dim - len(input_ids)), 'constant')
-        input_ids = np.expand_dims(input_ids, axis=0).astype(np.float32)
+        # Use index_vector field as index vector
+        input_ids = np.array(batch['index_vector'][0]).astype(np.float32)
+        input_ids = input_ids.reshape(1, -1)
+        input_ids = np.pad(input_ids, ((0, 0), (0, args.index_dim - input_ids.shape[1])), 'constant')
 
         # Normalize for cosine similarity
         faiss.normalize_L2(input_ids)
@@ -207,11 +207,11 @@ if __name__ == '__main__':
         shuffle=False,
         collate_fn=lambda batch: {
             'case': [item['case'] for item in batch],
-            'pixel_values': [item['image'].convert('RGB') for item in batch],
+            'image': [item['image'].convert('RGB') for item in batch],
             'texts': [item['text'] for item in batch],
-            'timestep': [item['timestep'] for item in batch],
             'min_value': [item['min_value'] for item in batch],
             'max_value': [item['max_value'] for item in batch],
+            'index_vector': [item['index_vector'] for item in batch],
         },
         batch_size=1,
         num_workers=1
@@ -226,12 +226,12 @@ if __name__ == '__main__':
     print("Start inference...")
     for i, batch in tqdm(enumerate(dataloader['validation']), total=len(dataloader['validation'])):
         # Get the ground truth texture
-        gt_texture = batch['pixel_values'][0]
+        gt_texture = batch['image'][0]
 
-        # Encode the text to get the embeddings
-        input_ids = np.array([batch['timestep'][0]] + [int(x.strip()) for x in batch['texts'][0].split(',')])
-        input_ids = np.pad(input_ids, (0, args.index_dim - len(input_ids)), 'constant')
-        input_ids = np.expand_dims(input_ids, axis=0).astype(np.float32)
+        # Use index_vector field as query vector
+        input_ids = np.array(batch['index_vector'][0]).astype(np.float32)
+        input_ids = input_ids.reshape(1, -1)
+        input_ids = np.pad(input_ids, ((0, 0), (0, args.index_dim - input_ids.shape[1])), 'constant')
 
         # Normalize for cosine similarity
         faiss.normalize_L2(input_ids)

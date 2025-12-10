@@ -82,6 +82,12 @@ if __name__ == '__main__':
         type=int,
         help="Number of top-k retrievals from the database.",
     )
+    parser.add_argument(
+        "--index_dim",
+        default=100,
+        type=int,
+        help="Dimension of the index vectors.",
+    )
 
     # others
     parser.add_argument(
@@ -154,10 +160,11 @@ if __name__ == '__main__':
             shuffle=False,
             collate_fn=lambda batch: {
                 'case': [item['case'] for item in batch],
-                'pixel_values': [item['image'].convert('RGB') for item in batch],
+                'image': [item['image'].convert('RGB') for item in batch],
                 'texts': [item['text'] for item in batch],
                 'min_value': [item['min_value'] for item in batch],
                 'max_value': [item['max_value'] for item in batch],
+                'index_vector': [item['index_vector'] for item in batch],
             },
             batch_size=1,
             num_workers=args.dataloader_num_workers if split == 'train' else 0,
@@ -168,14 +175,13 @@ if __name__ == '__main__':
     logger.info(f"Total validation samples: {len(dataloader['validation'].dataset)}")
 
     # Build the database index
-    index = faiss.IndexFlatIP(pipeline.tokenizer.model_max_length - 2)
+    index = faiss.IndexFlatIP(args.index_dim)
     print("Building database...")
     for i, batch in tqdm(enumerate(dataloader['train']), total=len(dataloader['train'])):
         # Encode the text to get the embeddings
-        input_ids = pipeline.tokenizer(batch['texts'][0])['input_ids']
-        input_ids = np.array(input_ids[1:-1])  # remove bos and eos
-        input_ids = np.pad(input_ids, (0, index.d - len(input_ids)), 'constant')
-        input_ids = np.expand_dims(input_ids, axis=0).astype(np.float32)
+        input_ids = np.array(batch['index_vector'][0]).astype(np.float32)
+        input_ids = input_ids.reshape(1, -1)
+        input_ids = np.pad(input_ids, ((0, 0), (0, args.index_dim - input_ids.shape[1])), 'constant')
 
         # Normalize for cosine similarity
         faiss.normalize_L2(input_ids)
@@ -196,13 +202,12 @@ if __name__ == '__main__':
     logger.info("============ Model Evaluation ============")
     for i, batch in tqdm(enumerate(dataloader['validation']), total=len(dataloader['validation'])):
         # Get the ground truth texture
-        gt_texture = batch['pixel_values'][0]
+        gt_texture = batch['image'][0]
         
         # Encode the text to get the embeddings
-        input_ids = pipeline.tokenizer(batch['texts'][0])['input_ids']
-        input_ids = np.array(input_ids[1:-1])  # remove bos and eos
-        input_ids = np.pad(input_ids, (0, index.d - len(input_ids)), 'constant')
-        input_ids = np.expand_dims(input_ids, axis=0).astype(np.float32)
+        input_ids = np.array(batch['index_vector'][0]).astype(np.float32)
+        input_ids = input_ids.reshape(1, -1)
+        input_ids = np.pad(input_ids, ((0, 0), (0, args.index_dim - input_ids.shape[1])), 'constant')
 
         # Normalize for cosine similarity
         faiss.normalize_L2(input_ids)
@@ -213,12 +218,13 @@ if __name__ == '__main__':
         # Retrieve the images from the database
         retrieved_images = dataset['train'][I[0]]['image']
 
-        # Convert cosine similarities to weights (normalize to sum to 1)
-        weights = D[0] / D[0].sum()
-
-        # Convert images to numpy arrays and stack them
-        image_arrays = [np.array(img) for img in retrieved_images]
-        image_array = np.average(image_arrays, axis=0, weights=weights).astype(np.uint8)
+        # Compute weighted average of retrieved images
+        if D[0][0] >= 0.5:
+            weights = D[0] / D[0].sum()
+            image_array = [np.array(img) for img in retrieved_images]
+            image_array = np.average(image_array, axis=0, weights=weights).astype(np.uint8)
+        else:
+            image_array = np.zeros_like(np.array(gt_texture))
         
         # Convert back to PIL Image
         conditioning_image = Image.fromarray(image_array).convert("RGB")
